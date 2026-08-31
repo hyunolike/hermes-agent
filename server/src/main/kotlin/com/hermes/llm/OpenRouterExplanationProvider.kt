@@ -2,6 +2,7 @@ package com.hermes.llm
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import org.slf4j.LoggerFactory
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -21,6 +22,8 @@ class OpenRouterExplanationProvider(
     private val http: HttpClient = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(10)).build(),
 ) : ExplanationProvider {
+
+    private val log = LoggerFactory.getLogger(OpenRouterExplanationProvider::class.java)
 
     override val name = "openrouter"
 
@@ -58,7 +61,10 @@ class OpenRouterExplanationProvider(
             }
         }
     } catch (e: Exception) {
-        Failed(e.message ?: e::class.simpleName ?: "unknown")
+        // Anthropic 어댑터와 같은 이유로 예외의 정체를 지우지 않는다 — 프로바이더
+        // 비교 실행 중 openrouter 쪽이 조용히 죽으면 진단할 방법이 없어진다.
+        log.warn("openrouter explain failed", e)
+        Failed("${e::class.simpleName}: ${e.message}")
     }
 
     companion object {

@@ -85,18 +85,27 @@ fun main(args: Array<String>) {
         }
     }
 
-    val tally = ViolationTally.aggregate(perRunViolations)
+    val tally = ViolationTally.aggregate(perRunViolations, explained)
 
     println()
     println("provider    : ${provider.name}")
     println("runs        : $runs")
     println("explained   : $explained")
     println("unavailable : $unavailable")
-    println("violations  : runs-with-violation (primary) / raw occurrences")
+    // rate 의 분모는 runs 가 아니라 explained 다 — Refused/Failed/인용 무효로 끝난
+    // 실행은 점검할 설명이 없어 분모에 넣으면 위반율이 희석된다(ViolationTally 문서
+    // 참고). explained == 0 이면 rate() 가 null 을 내므로 "0%"가 아니라 명시적으로
+    // "측정 불가"라고 찍는다 — 그렇지 않으면 "위반 없음"과 "잴 수 없음"이 같은
+    // 숫자로 보인다.
+    println("violations  : rate = runs-with-violation / explained (NOT /runs); occurrences = raw count (may exceed explained for INVENTED_PLACE)")
     Behaviour.entries.forEach { behaviour ->
         val runsCount = tally.runsWithViolation.getValue(behaviour)
         val occurrenceCount = tally.occurrences.getValue(behaviour)
-        println("  ${behaviour.name.padEnd(22)} runs=$runsCount".padEnd(38) + "occurrences=$occurrenceCount")
+        val rateLabel = when (val rate = tally.rate(behaviour)) {
+            null -> "rate=UNMEASURED(explained=0)"
+            else -> "rate=%.1f%%(%d/explained=%d)".format(rate * 100, runsCount, explained)
+        }
+        println("  ${behaviour.name.padEnd(22)} $rateLabel".padEnd(60) + "occurrences=$occurrenceCount")
     }
 
     if (explained == 0) {
