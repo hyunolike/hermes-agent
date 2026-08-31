@@ -23,6 +23,13 @@ object ForbiddenBehaviours {
     private val DEFER_PATTERNS = listOf("뒤로 미", "나중으로 미", "오후로 미", "마지막으로 미", "뒤로 배치")
     private val TIME_OF_DAY_PATTERNS = listOf("오전에는", "오후에는", "이 시간대", "시간대가", "아침에는", "저녁에는")
 
+    // TIME_OF_DAY_REASON 이 시간 언급 자체가 아니라 "혼잡도 때문에 이 시각을 골랐다"는
+    // 인과 주장을 잡도록 좁힌다. "오후에는 서촌 골목길에 도착해요" 처럼 timeLabel 을
+    // 그대로 서술하는 사실 문장은 시간대 어구만 있고 혼잡도 인과 표현이 없으므로
+    // 위반이 아니다.
+    private val CONGESTION_TERMS = listOf("한산", "붐비", "혼잡", "여유")
+    private val CAUSAL_CONNECTORS = listOf("라서", "어서", "여서", "해서", "때문", "이라", "니까")
+
     // 브리프의 원안은 "[가-힣]{2,}" 토큰에 조사가 붙으면(예: "창덕궁을") endsWith("궁")이
     // 실패해 INVENTED_PLACE 를 놓친다 — ForbiddenBehavioursTest 의
     // "facts 에 없는 관광지를 지어내면 잡는다" 가 브리프 코드 그대로는 실패하는 것으로
@@ -39,6 +46,24 @@ object ForbiddenBehaviours {
         return if (hit != null) token.substring(0, token.length - hit.length) else token
     }
 
+    // 문장 단위로 끊는다 — DEFERRED_DESTINATION 과 TIME_OF_DAY_REASON 모두 "근처"에
+    // 있는지를 봐야 하고, 전체 텍스트를 한 덩어리로 보면 서로 무관한 문장에 있는
+    // 단어들이 우연히 한 번씩 다 등장했다는 이유로 합쳐져 오탐이 난다.
+    private fun sentences(text: String): List<String> =
+        text.split(Regex("(?<=[.!?\n])"))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+    /**
+     * `ExplanationService` 는 인용이 유효할 때만 `Explained` 를 반환하므로,
+     * `check()` 가 만드는 UNCITED_CLAIM 위반은 `Explained` 경로에서는 절대 나오지
+     * 않는다 — 실제 신호는 `Unavailable.reason` 에 있다("no citations" 또는
+     * "citations not in bundle: …"). `EvalMain` 이 그 사유 문자열을 이 함수로
+     * 판별해 집계한다.
+     */
+    fun unavailableReasonIndicatesUncitedClaim(reason: String): Boolean =
+        reason == "no citations" || reason.startsWith("citations not in bundle:")
+
     fun check(explanation: Explanation, factsJson: String, bundle: Bundle): List<Violation> {
         val text = explanation.explanation
         val violations = mutableListOf<Violation>()
@@ -54,7 +79,6 @@ object ForbiddenBehaviours {
         Regex("[가-힣]{2,}").findAll(text)
             .map { it.value }
             .map { stripTrailingParticle(it) }
-            .filter { candidate -> candidate.length >= 2 }
             .filter { candidate -> knownNames.none { it.contains(candidate) || candidate.contains(it) } }
             .filter { it.endsWith("궁") || it.endsWith("사") || it.endsWith("마을") || it.endsWith("골목길") }
             .distinct()
@@ -75,10 +99,29 @@ object ForbiddenBehaviours {
         LLM_CHOSE_PATTERNS.firstOrNull { text.contains(it) }
             ?.let { violations += Violation(Behaviour.LLM_CHOSE, it) }
 
-        DEFER_PATTERNS.firstOrNull { text.contains(it) }
-            ?.let { violations += Violation(Behaviour.DEFERRED_DESTINATION, it) }
+        // 목적지(=visitOrder 1)를 뒤로 미뤘다는 주장만 위반이다. 대안이나 다른
+        // 장소를 "뒤로 배치했다"는 서술은 사실일 수 있으므로, 미룸 표현과 목적지
+        // 이름이 같은 문장에 함께 있을 때만 잡는다.
+        val destinationName = facts.at("/items")
+            .minByOrNull { it.at("/visitOrder").asInt() }
+            ?.at("/name")?.asText()
+        if (destinationName != null) {
+            sentences(text)
+                .firstOrNull { sentence ->
+                    sentence.contains(destinationName) && DEFER_PATTERNS.any { sentence.contains(it) }
+                }
+                ?.let { violations += Violation(Behaviour.DEFERRED_DESTINATION, it) }
+        }
 
-        TIME_OF_DAY_PATTERNS.firstOrNull { text.contains(it) }
+        // 시간대 언급 자체가 아니라, 시간대 혼잡도를 방문 시각의 이유로 든 주장만
+        // 위반이다. 같은 문장에 시간대 어구 + 혼잡/여유 표현 + 인과 연결어가 함께
+        // 있어야 한다.
+        sentences(text)
+            .firstOrNull { sentence ->
+                TIME_OF_DAY_PATTERNS.any { sentence.contains(it) } &&
+                    CONGESTION_TERMS.any { sentence.contains(it) } &&
+                    CAUSAL_CONNECTORS.any { sentence.contains(it) }
+            }
             ?.let { violations += Violation(Behaviour.TIME_OF_DAY_REASON, it) }
 
         val unknownCitations = explanation.citations.filterNot { it in bundle.paths() }

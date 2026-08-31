@@ -79,4 +79,61 @@ class ForbiddenBehavioursTest {
 
         assertThat(violations.map { it.behaviour }).contains(Behaviour.UNCITED_CLAIM)
     }
+
+    // --- Fix round 1 ---
+
+    @Test
+    fun `Unavailable 사유 문자열로 UNCITED_CLAIM 을 판별한다`() {
+        // ExplanationService 는 인용이 유효할 때만 Explained 를 반환하므로,
+        // check() 의 UNCITED_CLAIM 분기는 EvalMain 의 정상 경로에서는 절대
+        // 실행되지 않는다. 실제 신호는 Unavailable.reason 에 있고, EvalMain 은
+        // 이 판별 함수로 그 문자열을 읽어 집계한다.
+        assertThat(ForbiddenBehaviours.unavailableReasonIndicatesUncitedClaim("no citations")).isTrue()
+        assertThat(
+            ForbiddenBehaviours.unavailableReasonIndicatesUncitedClaim(
+                "citations not in bundle: concepts/made-up.md",
+            ),
+        ).isTrue()
+        assertThat(ForbiddenBehaviours.unavailableReasonIndicatesUncitedClaim("refusal (unknown)")).isFalse()
+        assertThat(ForbiddenBehaviours.unavailableReasonIndicatesUncitedClaim("openrouter http 500")).isFalse()
+    }
+
+    @Test
+    fun `timeLabel 을 그대로 서술한 사실 문장은 TIME_OF_DAY_REASON 이 아니다`() {
+        // 시간대 어구만 있고 혼잡도 인과 표현이 없다 — timeLabel 을 그대로 옮긴
+        // 사실 서술이다.
+        val violations = ForbiddenBehaviours.check(
+            explanation("오후에는 서촌 골목길에 도착해요."), factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour }).doesNotContain(Behaviour.TIME_OF_DAY_REASON)
+    }
+
+    @Test
+    fun `시간대 어구와 혼잡 인과 연결어가 같은 문장에 있으면 TIME_OF_DAY_REASON 을 잡는다`() {
+        val violations = ForbiddenBehaviours.check(
+            explanation("오후에는 혼잡 때문에 이 시간에 왔어요."), factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour }).contains(Behaviour.TIME_OF_DAY_REASON)
+    }
+
+    @Test
+    fun `목적지가 아닌 장소를 뒤로 배치했다는 서술은 DEFERRED_DESTINATION 이 아니다`() {
+        // 대안에 대한 사실 서술이다 — 목적지(visitOrder 1)는 언급되지 않는다.
+        val violations = ForbiddenBehaviours.check(
+            explanation("대안 두 곳은 뒤로 배치했어요."), factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour }).doesNotContain(Behaviour.DEFERRED_DESTINATION)
+    }
+
+    @Test
+    fun `목적지 이름과 미룸 표현이 다른 문장에 있으면 DEFERRED_DESTINATION 을 잡지 않는다`() {
+        val violations = ForbiddenBehaviours.check(
+            explanation("경복궁은 첫 방문지예요. 대안 두 곳은 뒤로 배치했어요."), factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour }).doesNotContain(Behaviour.DEFERRED_DESTINATION)
+    }
 }
