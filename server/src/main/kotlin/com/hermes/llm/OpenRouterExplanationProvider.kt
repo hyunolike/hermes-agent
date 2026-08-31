@@ -64,6 +64,12 @@ class OpenRouterExplanationProvider(
     companion object {
         private val MAPPER = ObjectMapper().registerKotlinModule()
 
+        // 선언된 도구 이름과 tool_choice 핀이 이 하나의 상수에서 파생된다 — 둘을
+        // 독립된 리터럴로 따로 적으면 한쪽만 바뀌어도(리네임 등) 컴파일도, 기존
+        // 네 테스트도 통과하면서 tool_choice 가 존재하지 않는 함수를 가리키게 된다.
+        // 그 상태에서 모델은 산문으로 답할 자유를 얻고 출력 계약은 에러 없이 사라진다.
+        const val TOOL_NAME = "submit_explanation"
+
         fun buildBody(systemText: String, factsJson: String, model: String): String {
             val schema = mapOf(
                 "type" to "object",
@@ -86,14 +92,14 @@ class OpenRouterExplanationProvider(
                         linkedMapOf(
                             "type" to "function",
                             "function" to linkedMapOf(
-                                "name" to "submit_explanation",
+                                "name" to TOOL_NAME,
                                 "parameters" to schema,
                             ),
                         ),
                     ),
                     "tool_choice" to linkedMapOf(
                         "type" to "function",
-                        "function" to linkedMapOf("name" to "submit_explanation"),
+                        "function" to linkedMapOf("name" to TOOL_NAME),
                     ),
                 ),
             )

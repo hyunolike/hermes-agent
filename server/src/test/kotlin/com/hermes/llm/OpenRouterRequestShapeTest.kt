@@ -25,6 +25,17 @@ class OpenRouterRequestShapeTest {
     }
 
     @Test
+    fun `tool_choice 가 가리키는 이름은 선언된 도구 이름과 같다`() {
+        // 위 테스트는 tool_choice 이름을 리터럴과만 비교한다 — 선언된 도구 이름만
+        // 바뀌어도(리네임 등) 그 테스트는 여전히 통과하면서 tool_choice 는 존재하지
+        // 않는 함수를 가리키게 된다. 두 경로를 서로 비교해야 그 드리프트가 잡힌다.
+        val response = body()
+
+        assertThat(response.at("/tool_choice/function/name").asText())
+            .isEqualTo(response.at("/tools/0/function/name").asText())
+    }
+
+    @Test
     fun `스키마가 두 필드를 모두 요구한다`() {
         val required = body().at("/tools/0/function/parameters/required")
             .map { it.asText() }.sorted()
