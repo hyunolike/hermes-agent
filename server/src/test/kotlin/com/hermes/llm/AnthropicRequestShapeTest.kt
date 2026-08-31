@@ -37,10 +37,22 @@ class AnthropicRequestShapeTest {
     }
 
     @Test
-    fun `같은 입력이면 system 문자열이 바이트 단위로 같다`() {
+    fun `같은 입력이면 system 블록이 캐시 제어까지 완전히 같다`() {
         val a = AnthropicExplanationProvider.buildParams(systemText, factsJson).view()
         val b = AnthropicExplanationProvider.buildParams(systemText, factsJson).view()
 
-        assertThat(a.system.single().text).isEqualTo(b.system.single().text)
+        assertThat(a.system).isEqualTo(b.system)
+    }
+
+    @Test
+    fun `effort 는 LOW 이고 스키마는 Explanation 의 필드를 요구한다`() {
+        // 이 테스트가 없으면 outputConfig(Explanation::class.java) 가
+        // 앞서 세팅한 effort(LOW) 를 조용히 덮어써도 아무것도 실패하지 않는다 —
+        // RawParamsView 에 outputConfig 필드가 없던 첫 라운드가 그 사고였다.
+        val body = AnthropicExplanationProvider.buildParams(systemText, factsJson).view()
+
+        assertThat(body.outputConfig.effort).isEqualTo("low")
+        assertThat(body.outputConfig.schemaRequiredFields)
+            .containsExactlyInAnyOrder("explanation", "citations")
     }
 }
