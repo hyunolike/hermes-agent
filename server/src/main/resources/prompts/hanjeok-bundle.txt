@@ -1,0 +1,382 @@
+----- FILE: concepts/travel-context-layer.md -----
+---
+title: Travel Context Layer
+created: 2026-08-03
+updated: 2026-08-19
+type: concept
+tags:
+  - travel-context
+  - course-explanation
+  - llm-rag
+sources:
+  - raw/service-snapshots/hanjeok/design-v3.md
+  - raw/service-snapshots/hanjeok/api-contract-v4.md
+  - raw/public-tourism-api/2026-openapi-briefing.txt
+confidence: high
+contested: false
+contradictions:
+  - "design-v3 lists time slot and weather context as runtime inputs. api-contract-v4 deleted the slot axis and no consumer service produces weather facts. v4 supersedes v3."
+---
+
+# Travel Context Layer
+
+Travel Context Layer is the service pattern where a travel service backend makes deterministic recommendations and the LLM wiki explains those recommendations using preserved tourism, congestion, seasonality, and regional-context evidence.
+
+The LLM wiki must not change ranking results. Ranking belongs to the consuming service's backend. The wiki adds policy context, data lineage, congestion reasoning, and user-readable explanation.
+
+## Runtime Use
+
+1. A travel service receives a destination, a visit date, and a radius.
+2. The service backend calculates candidates, congestion state, and visit order.
+3. The explanation layer loads the canonical pages listed in the service's context bundle.
+4. An LLM generates a concise explanation grounded in those pages and the backend's facts.
+
+## Output Boundaries
+
+Allowed:
+
+- Explain why a candidate was selected — which score factors it cleared, and that only quiet candidates are offered at all.
+- Explain how the destination's grade was reached, in percentile terms.
+- Explain why the visit order is what it is: it minimizes total travel time from a fixed starting point.
+- Explain what the reduction rate compares against — the course versus visiting the original destination alone.
+- Explain why a fallback was used when congestion coverage is missing.
+- Explain public-data compliance decisions.
+
+Not allowed:
+
+- Inventing an attraction the backend did not return.
+- Reordering course items, or restating them in an order the backend did not give.
+- **Saying the crowded destination was pushed to a later slot.** The original destination is fixed as the first visit; it is never deferred. See [[course-generation-policy]].
+- **Giving a time-of-day reason for a visit time.** Visit times come from travel time, not from when a place is quiet.
+- Asserting a weather condition. No consumer service supplies one — see [[weather-aware-travel-recommendation]].
+- Claiming precise public API facts without source evidence.
+
+## Related Pages
+
+- [[congestion-diagnosis]]
+- [[course-generation-policy]]
+- [[alternative-scoring]]
+- [[raw-derived-data-separation]]
+- [[tourapi-korservice2]]
+
+----- FILE: concepts/congestion-diagnosis.md -----
+---
+title: Congestion Diagnosis
+created: 2026-08-03
+updated: 2026-08-19
+type: concept
+tags:
+  - congestion
+  - recommendation-policy
+  - public-data
+sources:
+  - raw/service-snapshots/hanjeok/design-v3.md
+  - raw/service-snapshots/hanjeok/course-recommendation.md
+  - raw/service-snapshots/hanjeok/api-contract-v4.md
+confidence: high
+contested: false
+contradictions:
+  - "design-v3 lists time slot as a primary input. api-contract-v4 deleted it because the public congestion API carries only a date field and no time axis. v4 supersedes v3."
+---
+
+# Congestion Diagnosis
+
+Congestion Diagnosis converts public congestion forecast data into a user-facing crowding grade for a selected attraction and visit date.
+
+The inputs are attraction id and visit date. **There is no time-of-day axis** — the public congestion API returns a date and no time field, so the slot parameter was deleted from the contract rather than left unimplemented. An explanation may not assert a time-of-day crowding claim; the data to support one does not exist.
+
+## Grade Policy
+
+Grades come from the **percentile**, not the raw concentration value:
+
+- `RELAXED`: up to 50th percentile
+- `NORMAL`: 50th to 75th percentile
+- `CROWDED`: 75th to 90th percentile
+- `VERY_CROWDED`: 90th percentile and above
+
+The raw concentration is reported alongside the grade but is not the grade's input. Feeding concentration straight into the percentile cutoffs is a known implementation error the consumer service made once and corrected; an explanation that describes the grade as coming from the concentration value repeats it.
+
+## No Coverage Is A Normal State, Not An Error
+
+When an attraction has no forecast coverage the response is `hasCongestionData: false` with **HTTP 200 and success true**, carrying a message and a list of nearby diagnosable places instead of a diagnosis. Missing coverage is a product state, not a failure. An explanation layer must handle this branch: there is no grade, no percentile, and no better-date list to talk about, and inventing one is the exact failure this wiki exists to prevent.
+
+## Related Pages
+
+- [[congestion-forecast-api]]
+- [[alternative-scoring]]
+- [[course-generation-policy]]
+
+----- FILE: concepts/alternative-scoring.md -----
+---
+title: Alternative Scoring
+created: 2026-08-03
+updated: 2026-08-19
+type: concept
+tags:
+  - recommendation-policy
+  - fallback-policy
+  - congestion
+sources:
+  - raw/service-snapshots/hanjeok/design-v3.md
+  - raw/service-snapshots/hanjeok/course-recommendation.md
+  - raw/service-snapshots/hanjeok/attractions.fixture.json
+  - raw/service-snapshots/hanjeok/api-contract-v4.md
+confidence: high
+contested: false
+contradictions: []
+---
+
+# Alternative Scoring
+
+Alternative Scoring ranks related attractions when the original destination is crowded, combining relatedness, quietness, and distance into one number.
+
+The consumer service's concrete formula is:
+
+```text
+score = 0.4 * relationScore
+      + 0.4 * (1 - concentration / 100)
+      + 0.2 * (1 - min(distanceKm, 15) / 15)
+```
+
+Results are returned sorted by `score` descending.
+
+**The weights 0.4 / 0.4 / 0.2 are provisional.** They were chosen without supporting data and are expected to move once real usage exists. An explanation may say which factors the score combines; it should not present the weights as a tuned or validated result.
+
+If the related-attraction API does not supply a numeric relatedness score, a consumer service may substitute a binary "is related" weight.
+
+## Only Quiet Candidates Are Returned
+
+The list contains **`RELAXED` and `NORMAL` grades only** — `CROWDED` and `VERY_CROWDED` never appear, and candidates with no congestion coverage are excluded before scoring. This is a filter applied before ranking, not a consequence of the score.
+
+Two things follow for an explanation. It may not describe a returned alternative as busy, because a busy one cannot be in the list. And an empty list means no quiet, covered, related candidate existed — not that the scoring rejected them.
+
+## Two Text Fields, Two Screens
+
+Each alternative carries both a `summary` (what the place is) and a `recommendReason` (why it suits this date). They serve different screens and must not be merged or treated as interchangeable.
+
+## Runtime Boundary
+
+The backend owns this score. [[travel-context-layer]] may explain the resulting score factors, but it must not recalculate or override the ranked list.
+
+## Related Pages
+
+- [[congestion-diagnosis]]
+- [[related-attraction-api]]
+- [[keep-llm-out-of-ranking]]
+
+----- FILE: concepts/course-generation-policy.md -----
+---
+title: Course Generation Policy
+created: 2026-08-03
+updated: 2026-08-19
+type: concept
+tags:
+  - course-generation
+  - recommendation-policy
+  - course-explanation
+sources:
+  - raw/service-snapshots/hanjeok/design-v3.md
+  - raw/service-snapshots/hanjeok/course-recommendation.md
+  - raw/service-snapshots/hanjeok/api-contract-v4.md
+confidence: high
+contested: false
+contradictions:
+  - "design-v3 places each attraction in the time slot where its congestion is lowest. api-contract-v4 removed the slot axis entirely and derives visit times from travel time. v4 supersedes v3 on this point."
+  - "design-v3 describes greedy placement plus local swapping. api-contract-v4 replaced it with exhaustive search, and the swap step no longer exists as a concept."
+---
+
+# Course Generation Policy
+
+Course Generation Policy fixes the original destination as the starting point and orders the selected alternatives so total travel time is smallest.
+
+At most three alternatives may be selected, so the ordering is an exhaustive search over at most `3! = 6` permutations. It always finds the optimum; nothing is approximated. There is no separate reordering or swap step — the search replaced it.
+
+## Visit Times Are Travel Time, Not Congestion
+
+`timeLabel` on each course item is derived from **departure at 10:00, ninety minutes at each place, plus the measured travel time between them**, accumulated in visit order. It says nothing about when a place is least crowded.
+
+This is the single most dangerous thing to get wrong in an explanation. Until v3 the label did mean "the quietest time in that slot", and an explanation written against that reading would claim a reason the backend never computed. **An explanation must not say a place was scheduled at a given hour because that hour is quieter.** The correct statement is that the order minimizes travel time and the clock follows from it.
+
+The congestion grade still appears per item, because each place carries its own grade for the visit date. The grade explains *why the place is in the course*; it does not explain *what time it sits at*.
+
+## Rule-Based Text Already Exists
+
+`title`, `summary`, and each item's `reason` are Korean rule-based template strings produced by `CourseRoutePolicy` and `CourseTextPolicy`. No sentence in a course response comes from a language model today. That is the gap an explanation layer fills, and it is also the baseline any explanation should be compared against.
+
+## Explanation Use
+
+[[travel-context-layer]] can say that a crowded destination was kept but reordered rather than dropped, that the visit order minimizes travel time, and that the reported reduction rate compares the course against visiting the original destination alone.
+
+## Related Pages
+
+- [[congestion-diagnosis]]
+- [[alternative-scoring]]
+- [[why-this-place-today]]
+
+----- FILE: decisions/keep-llm-out-of-ranking.md -----
+---
+title: Keep LLM Out Of Ranking
+created: 2026-08-03
+updated: 2026-08-03
+type: decision
+tags:
+  - llm-rag
+  - recommendation-policy
+  - api-compliance
+sources:
+  - raw/service-snapshots/hanjeok/design-v3.md
+  - raw/public-tourism-api/2026-openapi-briefing.txt
+confidence: medium
+contested: false
+contradictions: []
+---
+
+# Keep LLM Out Of Ranking
+
+## Decision
+
+Travel Context Wiki will not let an LLM decide attraction ranking or course order for consuming services.
+
+## Reason
+
+The service needs deterministic behavior, public-data traceability, and reproducible harness results. LLM output is suitable for explanation and synthesis, not for replacing [[alternative-scoring]] or [[course-generation-policy]].
+
+## Consequences
+
+- Backend recommendation tests remain deterministic.
+- LLM prompts must consume backend-generated course facts.
+- User-facing explanations can be regenerated without changing the saved course.
+
+## Related Pages
+
+- [[travel-context-layer]]
+- [[why-this-place-today]]
+- [[alternative-scoring]]
+
+----- FILE: queries/why-this-place-today.md -----
+---
+title: Why This Place Today
+created: 2026-08-03
+updated: 2026-08-19
+type: query
+tags:
+  - course-explanation
+  - llm-rag
+  - recommendation-policy
+sources:
+  - raw/service-snapshots/hanjeok/design-v3.md
+  - raw/service-snapshots/hanjeok/course-recommendation.md
+  - raw/service-snapshots/hanjeok/api-contract-v4.md
+confidence: high
+contested: false
+contradictions: []
+---
+
+# Why This Place Today
+
+This query template explains why a travel service recommended a place and an order for a specific date, using only the facts the service backend returns.
+
+## Required Inputs
+
+Five facts. They do not arrive in one payload — the course response carries the visit date and the items, while the destination, the diagnosis, and the alternatives come from their own endpoints. Every response is wrapped in `{ success, data, error }` and the facts live under `data`.
+
+| Fact | Source endpoint |
+| --- | --- |
+| `destination` | `GET /attractions/{id}` |
+| `visitDate` | `targetDate` on `GET /courses/{uuid}` |
+| `congestionDiagnosis` | `GET /attractions/{id}/congestion?date=` |
+| `alternatives` | `GET /attractions/{id}/alternatives?date=&radius=` |
+| `courseItems` | `items` on `GET /courses/{uuid}` |
+
+A field absent from these is a field the explanation may not assert. `harness/fixtures/course-explanation-request.json` holds a worked example of all four responses.
+
+## Answer Policy
+
+The answer should:
+
+- summarize the destination's congestion diagnosis using [[congestion-diagnosis]], in percentile terms
+- mention that alternatives were ranked by [[alternative-scoring]], and that only quiet candidates are offered
+- explain the returned visit order using [[course-generation-policy]] — it minimizes travel time from a fixed start
+- state what the reduction rate compares against: the course versus visiting the destination alone
+- avoid claiming that the LLM selected or ordered anything
+
+The answer must not:
+
+- say the crowded destination was moved later; it is always the first visit
+- give a time-of-day reason for a visit time; the times come from travel time
+- assert a weather condition, because no consumer service supplies one
+- assert a requested time slot, because the contract has no time axis
+
+When `hasCongestionData` is false there is no grade, percentile, or better-date list. The answer explains that coverage is missing and that nearby diagnosable places were offered instead.
+
+## Related Pages
+
+- [[travel-context-layer]]
+- [[congestion-diagnosis]]
+- [[keep-llm-out-of-ranking]]
+- [[course-generation-policy]]
+
+----- FILE: records/places/gyeongbokgung.json -----
+{
+  "id": "tourapi:sample-gyeongbokgung",
+  "name": "경복궁",
+  "regionId": "region:seoul-jongno",
+  "contentType": "attraction",
+  "indoorOutdoor": "outdoor",
+  "weatherSensitivity": ["rain", "heat", "cold"],
+  "congestionCoverage": "expected",
+  "source": "raw/service-snapshots/hanjeok/attractions.fixture.json",
+  "notes": "Seed record copied from the first consumer-service fixture. Replace sample id after public API spike validation."
+}
+
+
+----- FILE: records/congestion/grade-policy.json -----
+{
+  "version": "2026-08-03",
+  "source": "raw/service-snapshots/hanjeok/design-v3.md",
+  "grades": [
+    {
+      "grade": "RELAXED",
+      "percentileMaxExclusive": 50,
+      "labelKo": "여유"
+    },
+    {
+      "grade": "NORMAL",
+      "percentileMinInclusive": 50,
+      "percentileMaxExclusive": 75,
+      "labelKo": "보통"
+    },
+    {
+      "grade": "CROWDED",
+      "percentileMinInclusive": 75,
+      "percentileMaxExclusive": 90,
+      "labelKo": "혼잡"
+    },
+    {
+      "grade": "VERY_CROWDED",
+      "percentileMinInclusive": 90,
+      "labelKo": "매우혼잡"
+    }
+  ]
+}
+
+
+----- FILE: packages/hanjeok/prompt.md -----
+# Hanjeok Explanation Prompt
+
+Use Hanjeok backend results as facts. Use Travel Context Wiki as source-grounded explanation context.
+
+The answer should:
+
+- explain why the original destination is crowded or diagnosable
+- explain why each alternative was eligible
+- explain why the course items appear in the order the backend returned
+- explain that the LLM did not rank or reorder the course
+
+The answer must not:
+
+- add attractions not returned by Hanjeok
+- change visit order
+- claim real-time public API values not present in backend facts
+- claim any weather condition, because Hanjeok supplies no weather fact
+
