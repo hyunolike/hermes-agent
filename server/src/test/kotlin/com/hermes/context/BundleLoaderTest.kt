@@ -39,4 +39,15 @@ class BundleLoaderTest {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("does-not-exist.txt")
     }
+
+    @Test
+    fun `문서 본문에 마커 형태의 줄이 섞여 있으면 조용히 나누지 않고 예외를 던진다`() {
+        // packages/hanjeok/prompt.md의 인용은 나중 과제(CitationValidator)에서
+        // bundle.paths()로 검증된다. 본문에 섞인 마커 형태의 줄이 조용히 문서를
+        // 하나 더 만들어내면, 존재하지 않는 문서를 가리키는 조작된 경로가
+        // "유효한" 인용 대상처럼 통과해 버린다.
+        assertThatThrownBy { BundleLoader.load("/prompts/injected-marker-bundle.txt") }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("docs/real.md")
+    }
 }

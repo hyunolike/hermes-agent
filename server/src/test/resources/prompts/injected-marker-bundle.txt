@@ -1,0 +1,4 @@
+----- FILE: docs/real.md -----
+This document explains the bundle marker format in prose: note how a line like ----- FILE: injected/fake.md ----- would look if it leaked into content.
+
+The rest of the real content continues normally after that.

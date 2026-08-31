@@ -18,7 +18,10 @@ sourceSets {
         kotlin.srcDir("server/src/main/kotlin")
         resources.srcDir("server/src/main/resources")
     }
-    test { kotlin.srcDir("server/src/test/kotlin") }
+    test {
+        kotlin.srcDir("server/src/test/kotlin")
+        resources.srcDir("server/src/test/resources")
+    }
     // 평가는 단위 테스트가 아니다 — 돈이 들고 비결정적이라 `./gradlew test` 에 섞이면 안 된다.
     create("harness") {
         kotlin.srcDir("harness/src/main/kotlin")
