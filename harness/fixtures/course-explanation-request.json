@@ -1,0 +1,129 @@
+{
+  "courseUuid": "3f6c2b18-9a4d-4c77-8b21-5e0f7c9d1a44",
+  "backendResponses": {
+    "GET /api/v1/courses/{uuid}": {
+      "success": true,
+      "error": null,
+      "data": {
+        "uuid": "3f6c2b18-9a4d-4c77-8b21-5e0f7c9d1a44",
+        "targetDate": "2026-08-15",
+        "title": "혼잡한 경복궁을 피하는 하루",
+        "congestionReductionRate": 34,
+        "summary": "경복궁을 대신 북촌 한옥마을와 서촌 골목길을 묶었어요. 혼자 가는 것보다 혼잡도가 34% 낮아요.",
+        "recommendedDate": {
+          "date": "2026-08-19",
+          "congestionReductionRate": 41
+        },
+        "items": [
+          {
+            "attractionId": 1001,
+            "name": "경복궁",
+            "visitOrder": 1,
+            "timeLabel": "오전 10:00",
+            "grade": "VERY_CROWDED",
+            "reason": "경복궁은 이 날 매우 붐비지만 첫 방문지로 두었어요.",
+            "latitude": 37.5796,
+            "longitude": 126.977,
+            "imageUrls": ["https://example.invalid/gyeongbokgung.jpg"],
+            "travelMinutesFromPrev": null
+          },
+          {
+            "attractionId": 1003,
+            "name": "북촌 한옥마을",
+            "visitOrder": 2,
+            "timeLabel": "오전 11:38",
+            "grade": "NORMAL",
+            "reason": "북촌 한옥마을은 이 날 붐비지 않아서 앞 장소에서 8분 거리예요.",
+            "latitude": 37.5826,
+            "longitude": 126.983,
+            "imageUrls": [],
+            "travelMinutesFromPrev": 8
+          },
+          {
+            "attractionId": 1002,
+            "name": "서촌 골목길",
+            "visitOrder": 3,
+            "timeLabel": "오후 1:14",
+            "grade": "RELAXED",
+            "reason": "서촌 골목길은 이 날 한산해서 앞 장소에서 6분 거리예요.",
+            "latitude": 37.5787,
+            "longitude": 126.9696,
+            "imageUrls": [],
+            "travelMinutesFromPrev": 6
+          }
+        ]
+      }
+    },
+    "GET /api/v1/attractions/1001": {
+      "success": true,
+      "error": null,
+      "data": {
+        "id": 1001,
+        "name": "경복궁",
+        "area": "서울 종로구"
+      }
+    },
+    "GET /api/v1/attractions/1001/congestion?date=2026-08-15": {
+      "success": true,
+      "error": null,
+      "data": {
+        "hasCongestionData": true,
+        "attraction": {
+          "id": 1001,
+          "name": "경복궁",
+          "imageUrl": "https://example.invalid/gyeongbokgung.jpg"
+        },
+        "diagnosis": {
+          "date": "2026-08-15",
+          "concentration": 87.3,
+          "percentile": 92,
+          "grade": "VERY_CROWDED",
+          "message": "경복궁은 이날 매우 붐빌 것으로 보여요. 다른 날이나 다른 장소를 권해요."
+        },
+        "dailyForecasts": [
+          { "date": "2026-08-15", "concentration": 87.3, "grade": "VERY_CROWDED" },
+          { "date": "2026-08-16", "concentration": 74.1, "grade": "CROWDED" },
+          { "date": "2026-08-19", "concentration": 48.6, "grade": "RELAXED" }
+        ],
+        "betterDates": [
+          { "date": "2026-08-19", "concentration": 48.6, "grade": "RELAXED" },
+          { "date": "2026-08-20", "concentration": 55.2, "grade": "NORMAL" }
+        ]
+      }
+    },
+    "GET /api/v1/attractions/1001/alternatives?date=2026-08-15&radius=15": {
+      "success": true,
+      "error": null,
+      "data": [
+        {
+          "attractionId": 1003,
+          "name": "북촌 한옥마을",
+          "imageUrl": null,
+          "grade": "NORMAL",
+          "concentration": 62.0,
+          "distanceKm": 0.6,
+          "relationScore": 0.9,
+          "score": 0.704,
+          "summary": "한옥 — 역사관광지",
+          "recommendReason": "북촌 한옥마을은 붐비지 않는 편이라 여유롭게 다닐 수 있어요.",
+          "travelMinutes": 8,
+          "rating": null
+        },
+        {
+          "attractionId": 1002,
+          "name": "서촌 골목길",
+          "imageUrl": null,
+          "grade": "RELAXED",
+          "concentration": 41.5,
+          "distanceKm": 0.7,
+          "relationScore": 0.6,
+          "score": 0.665,
+          "summary": "도보거리 — 문화시설",
+          "recommendReason": "서촌 골목길은 이날 한산해서 조용히 둘러보기 좋아요.",
+          "travelMinutes": 6,
+          "rating": null
+        }
+      ]
+    }
+  }
+}
