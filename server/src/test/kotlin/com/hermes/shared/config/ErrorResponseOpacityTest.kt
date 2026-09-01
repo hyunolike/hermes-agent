@@ -16,30 +16,38 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
 
 /**
- * 실패가 실제로 새는 걸 막는지 확인한다 — 두 겹으로.
+ * 실패가 실제로 새는 걸 막는지 확인한다 — `ApiErrorHandler` 의 세 갈래 중
+ * 아래 두 갈래(1 은 `ExplanationUnavailableException` 전용이라
+ * `ExplainControllerTest` 가 이미 본다), 그리고 그 핸들러조차 못 잡는 경로의
+ * 백스톱까지.
  *
- * `ApiErrorHandler` 는 이제 `ExplanationUnavailableException` 뿐 아니라 그 밖의
- * 모든 예외도 잡는다(`@ExceptionHandler(Exception::class)`, 최종 수정 라운드 항목 1).
- * 그 핸들러가 잡으면 요청은 스프링의 기본 에러 컨트롤러(`/error`,
- * `DefaultErrorAttributes`)까지 가지 않고 `ExceptionHandlerExceptionResolver` 단계에서
- * 바로 `{"code":"EXPLANATION_UNAVAILABLE"}` 로 렌더링된다 — 그래서 아래 두 테스트가
- * 확인하는 건 이제 "새지 않는다"를 넘어 "정확히 그 계약 본문이다"다.
+ * `ApiErrorHandler` 는 세 겹이다(최종 수정 라운드 항목 1, 이어서 그 catch-all 이
+ * 클라이언트 오류까지 503 으로 뭉개던 걸 바로잡은 두 번째 라운드).
+ * 1) `ExplanationUnavailableException` → 503 `EXPLANATION_UNAVAILABLE`.
+ * 2) `ResponseEntityExceptionHandler` 가 다루는 스프링 MVC 예외 계열(깨진 JSON,
+ *    지원 안 하는 메서드/미디어 타입, 파라미터 누락 등) → 오버라이드한
+ *    `handleExceptionInternal` 이 스프링이 계산한 4xx 상태 코드를 그대로 쓰고
+ *    본문만 `{"code":"INVALID_REQUEST"}` 로 불투명하게 바꾼다. 아래 첫 번째
+ *    테스트가 이 갈래를 본다(깨진 JSON → `HttpMessageNotReadableException`).
+ *    503 을 주지 않는 이유: 같은 깨진 JSON 은 몇 번을 재시도해도 같은 이유로
+ *    영원히 실패하므로, "나중에 다시 시도하라"는 뜻의 상태 코드를 주면 클라이언트
+ *    쪽 실수를 서버 장애로 위장시켜 불필요한 재시도 폭풍을 부른다(실측: 처음
+ *    버전은 이 경로도 뭉뚱그려 503 으로 냈다가 그게 틀렸다는 지적을 받고 나눴다).
+ * 3) 그 밖의 모든 예외(진짜 예기치 못한 버그) → `onUnexpected` 가 503
+ *    `EXPLANATION_UNAVAILABLE`. 아래 두 번째 테스트가 이 갈래를 본다 —
+ *    `/test/boom`(이 클래스 안에서만 뜨는 테스트 전용 컨트롤러, 운영 코드에는
+ *    이런 예외를 던지는 지점이 없다)이 던지는 평범한 `RuntimeException`으로
+ *    재현한다. 프로덕션에서는 `ExplainController` 의 `mapper.readTree(...)` 가
+ *    예상 못 한 입력에 걸릴 때 같은 모양의 실패가 난다.
  *
- * `application.yml` 의 `spring.web.error.*` 는 그래도 지운다 — `ApiErrorHandler` 가
- * 못 잡는 경로(예: 핸들러 자체를 못 찾는 404, `Exception` 이 아닌 `Throwable`)가
- * 기본 에러 컨트롤러로 떨어질 때의 방어선이다. 접두사가 `server.error` 가 아니라
- * `spring.web.error` 인 이유는 `application.yml` 의 주석 참고(스프링 부트 4.1 에서
- * `ErrorProperties` 는 `ServerProperties` 가 아니라 `WebProperties` 에 중첩된다).
- *
- * 1) 깨진 JSON 요청 본문 → `HttpMessageNotReadableException`. 컨트롤러 메서드
- *    진입 전(인자 바인딩 단계)에 던져지지만 `ExceptionHandlerExceptionResolver` 는
- *    이 단계의 예외도 잡으므로 `ApiErrorHandler.onUnexpected` 로 간다(실측:
- *    라운드 1 은 이 경로가 `spring.web.error.*` 로만 막혀 4xx·코드 없음으로
- *    응답한다고 적었는데, `Exception::class` 핸들러를 넣고 나니 이제는 503 +
- *    계약 본문으로 응답한다 — 아래에서 재검증).
- * 2) 잡히지 않은 평범한 `RuntimeException`(`/test/boom`, 이 클래스 안에서만
- *    뜨는 테스트 전용 컨트롤러 — 운영 코드에는 이런 예외를 던지는 지점이 없다)도
- *    같은 핸들러로 간다.
+ * 이 셋 다 스프링의 기본 에러 컨트롤러(`/error`, `DefaultErrorAttributes`)까지
+ * 가지 않고 `ExceptionHandlerExceptionResolver` 단계에서 바로 렌더링된다.
+ * `application.yml` 의 `spring.web.error.*` 는 그래도 지운다 — `ApiErrorHandler`
+ * 조차 못 잡는 경로(예: 핸들러 자체를 못 찾는 404, `Exception` 이 아닌
+ * `Throwable`)가 기본 에러 컨트롤러로 떨어질 때의 방어선이다. 접두사가
+ * `server.error` 가 아니라 `spring.web.error` 인 이유는 `application.yml` 의
+ * 주석 참고(스프링 부트 4.1 에서 `ErrorProperties` 는 `ServerProperties` 가
+ * 아니라 `WebProperties` 에 중첩된다).
  *
  * MockMvc(WebEnvironment.MOCK)로는 이 경로들을 실측할 수 없었다 — 컨테이너가
  * 없어 실제 HTTP 응답 렌더링 경로를 안 타고 본문이 그냥 비어버려, 무엇을
@@ -75,8 +83,14 @@ class ErrorResponseOpacityTest {
         fun boom(): String = throw RuntimeException("INTERNAL DETAIL THAT MUST NOT LEAK")
     }
 
+    /**
+     * `ApiErrorHandler.handleExceptionInternal` 갈래 — 스프링 MVC 예외 계열은
+     * 4xx 를 유지하고, 몸통만 `{"code":"INVALID_REQUEST"}` 로 불투명해진다.
+     * 503 이 아니다: 깨진 JSON 은 재시도해도 영원히 같은 이유로 실패하므로
+     * "나중에 다시 시도하라"는 뜻의 상태 코드를 주면 안 된다.
+     */
     @Test
-    fun `깨진 JSON 요청도 메시지·스택트레이스·바인딩오류 없이 계약 본문만 준다`() {
+    fun `깨진 JSON 요청은 4xx 로 남고 몸통만 불투명해진다`() {
         val headers = HttpHeaders().apply { contentType = MediaType.APPLICATION_JSON }
         val request = HttpEntity("not-json-at-all", headers)
 
@@ -87,27 +101,23 @@ class ErrorResponseOpacityTest {
             String::class.java,
         )
 
-        // ApiErrorHandler.onUnexpected 가 잡는다 — 더는 4xx 가 아니라 다른 모든
-        // 실패와 같은 503 이다(최종 수정 라운드 항목 1).
-        assertThat(response.statusCode.value()).isEqualTo(503)
+        assertThat(response.statusCode.is4xxClientError).isTrue()
 
         val body = ObjectMapper().readTree(response.body)
         assertThat(body.has("message")).isFalse()
         assertThat(body.has("trace")).isFalse()
         assertThat(body.has("exception")).isFalse()
         assertThat(body.has("errors")).isFalse()
-        assertThat(body.get("code").asText()).isEqualTo("EXPLANATION_UNAVAILABLE")
+        assertThat(body.fieldNames().asSequence().toList()).containsExactly("code")
+        assertThat(body.get("code").asText()).isEqualTo("INVALID_REQUEST")
     }
 
     /**
-     * `/test/boom` 이 예기치 못한(anticipated 되지 않은) `RuntimeException`(메시지:
-     * "INTERNAL DETAIL THAT MUST NOT LEAK")을 던진다 — 프로덕션에서는
-     * `ExplainController` 의 `mapper.readTree(...)` 가 예상 못 한 입력에 걸릴 때
-     * 같은 모양의 실패가 난다. `ApiErrorHandler.onUnexpected` 가 잡아 그 메시지를
-     * 삼키고, 클라이언트에게는 `ExplanationUnavailableException` 과 완전히 같은
-     * 모양의 503 계약 본문만 준다 — "새지 않는다"가 아니라 "본문이 정확히 이거다"를
-     * 검증한다(항목 1 이 요구하는 뮤테이션 증거는 커밋 메시지/최종 보고서 참고 —
-     * 핸들러를 빼면 이 테스트가 정확히 이 지점에서 실패로 바뀐다).
+     * `ApiErrorHandler.onUnexpected` 갈래 — 진짜 예기치 못한 예외는 여전히 503
+     * `EXPLANATION_UNAVAILABLE` 이다. `/test/boom` 이 잡히지 않은
+     * `RuntimeException`(메시지: "INTERNAL DETAIL THAT MUST NOT LEAK")을 던지면
+     * 그 메시지는 삼켜지고, 클라이언트에게는 `ExplanationUnavailableException` 과
+     * 완전히 같은 모양의 503 계약 본문만 간다.
      */
     @Test
     fun `잡히지 않은 예외는 EXPLANATION_UNAVAILABLE 503 계약 본문 그대로다`() {
