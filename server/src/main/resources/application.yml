@@ -21,9 +21,20 @@ management:
 # 모델이 거부한 텍스트를 담을 수 있다. 이 4개 설정은 스프링 부트 기본값과
 # 이미 같지만(그래서 이 파일이 없어도 새지는 않았다), 이 파일을 만드는 지금부터는
 # "우연히 안전함"이 아니라 "명시적으로 강제함"이어야 한다.
-server:
-  error:
-    include-exception: false
-    include-stacktrace: never
-    include-message: never
-    include-binding-errors: never
+#
+# 접두사는 server.error 가 아니라 spring.web.error 다 — 이 프로젝트의 스프링 부트
+# 4.1 에서 ErrorProperties 는 ServerProperties(접두사 server) 가 아니라
+# WebProperties(접두사 spring.web) 에 중첩되어 바인딩된다(ErrorMvcAutoConfiguration
+# .basicErrorController 가 BasicErrorController 를 this.webProperties.getError()
+# 로 생성하는 것으로 실측 확인, spring-boot-web-server:4.1.0 소스의
+# ServerProperties 에는 error 필드 자체가 없다). server.error.* 로 썼던 첫 버전은
+# 조용히 아무 필드에도 안 묶여 무시됐다 — 실측 없이 Boot 3 시절 관례를 그대로
+# 옮겨 적은 값이었다. ErrorResponseOpacityTest 의 뮤테이션 검증(include-message
+# 를 always 로 바꿔 실패를 재현)은 이 접두사로 고쳐야만 실제로 통한다.
+spring:
+  web:
+    error:
+      include-exception: false
+      include-stacktrace: never
+      include-message: never
+      include-binding-errors: never
