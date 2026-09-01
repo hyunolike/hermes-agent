@@ -17,6 +17,13 @@ data class CourseExplanation(val explanation: Explanation, val factsJson: String
  * 에 있으므로 import 하지 않는다 — presentation 패키지의 것이 아니다. 이 클래스가
  * application 층에 있는 이상 presentation 을 import 하면 이 프로젝트가 테스트로
  * 강제하는 의존 방향이 뒤집힌다.
+ *
+ * **캐시 적중이어도 한적 호출 3회는 그대로 나간다.** 아래 `explain` 을 보면
+ * `factsSource.fetch(courseUuid)` 가 캐시 조회보다 먼저다 — 응답이 언제나 `facts`
+ * 를 실어야 하므로(클라이언트는 courseUuid 만 보내고 재계산할 방법이 없다) facts
+ * 는 매 요청 다시 받아야 한다. 캐시가 건너뛰는 건 유료 LLM 호출(`service.explain`)
+ * 하나뿐이다. 용량이나 요청 한도를 잡는 사람은 "캐시 적중률이 높으니 한적 부하는
+ * 낮다"고 가정하면 안 된다 — 한적 쪽 3콜 부하는 캐시와 무관하게 요청 수에 비례한다.
  */
 class CourseExplainer(
     private val factsSource: FactsSource,

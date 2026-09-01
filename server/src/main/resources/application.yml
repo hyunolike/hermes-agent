@@ -1,6 +1,11 @@
 hermes:
   hanjeok:
-    base-url: ${HANJEOK_BASE_URL:https://api.hanjeok.example}
+    # 기본값을 두지 않는다 — 그럴듯한 플레이스홀더(과거 https://api.hanjeok.example)는
+    # HANJEOK_BASE_URL 을 빼먹은 운영자에게 깨끗한 기동과 통과하는 헬스체크를 준 뒤,
+    # 첫 요청에서야 실제 백엔드 장애와 구분되지 않는 실패를 안겨준다. 기본값이 없으면
+    # 이 프로퍼티를 바인딩하는 순간 이름을 지목한 에러로 기동이 실패한다 — 로컬
+    # 실행에도 이 값을 명시적으로 넘겨야 하는 불편은 의도한 대가다.
+    base-url: ${HANJEOK_BASE_URL}
     radius-km: 15
     timeout-seconds: 5
   llm:
