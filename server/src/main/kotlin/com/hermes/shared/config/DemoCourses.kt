@@ -17,14 +17,23 @@ data class DemoCourse(val uuid: String, val label: String)
 class DemoCourses(val courses: List<DemoCourse>) {
 
     companion object {
-        /** `uuid|라벨, uuid|라벨` 형식. 라벨은 생략 가능하다. */
+        /**
+         * `uuid|라벨, uuid|라벨` 형식. 라벨은 생략 가능하다.
+         *
+         * uuid 가 (트림 후) 비어 있는 항목은 버린다 — 빈 uuid 로 만든 항목이
+         * 목록에 남으면, 이 목록을 읽는 도달성 검사가 "존재한 적 없는 코스"를
+         * BROKEN 으로 보고해 진짜 알람을 흐린다. `"|"`, `"|라벨"` 처럼 uuid
+         * 자리가 비어 있으면 항목째 제외한다.
+         */
         fun parse(raw: String): DemoCourses = DemoCourses(
             raw.split(",")
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
-                .map { entry ->
+                .mapNotNull { entry ->
                     val parts = entry.split("|", limit = 2).map { it.trim() }
-                    DemoCourse(uuid = parts[0], label = parts.getOrNull(1)?.takeIf { it.isNotEmpty() } ?: parts[0])
+                    val uuid = parts[0]
+                    if (uuid.isEmpty()) return@mapNotNull null
+                    DemoCourse(uuid = uuid, label = parts.getOrNull(1)?.takeIf { it.isNotEmpty() } ?: uuid)
                 },
         )
     }

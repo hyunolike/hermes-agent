@@ -23,4 +23,15 @@ class DemoCoursesTest {
     fun `라벨이 없으면 uuid 를 라벨로 쓴다`() {
         assertThat(DemoCourses.parse("aaa").courses[0].label).isEqualTo("aaa")
     }
+
+    @Test
+    fun `uuid 가 비어 있는 항목은 버린다`() {
+        assertThat(DemoCourses.parse("|").courses).isEmpty()
+        assertThat(DemoCourses.parse("|label").courses).isEmpty()
+
+        val mixed = DemoCourses.parse("aaa|valid, |")
+        assertThat(mixed.courses).hasSize(1)
+        assertThat(mixed.courses[0].uuid).isEqualTo("aaa")
+        assertThat(mixed.courses[0].label).isEqualTo("valid")
+    }
 }
