@@ -7,6 +7,8 @@ hermes:
     model: claude-opus-5
   cors:
     allowed-origins: ${HERMES_CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  demo:
+    courses: ${HERMES_DEMO_COURSES:}
 
 management:
   endpoints:

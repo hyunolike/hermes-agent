@@ -64,3 +64,10 @@ tasks.register<JavaExec>("eval") {
     classpath = sourceSets["harness"].runtimeClasspath
     mainClass.set("com.hermes.harness.EvalMainKt")
 }
+
+tasks.register<JavaExec>("demoReachability") {
+    group = "verification"
+    description = "고정 데모 코스가 한적에서 아직 조회되는지 확인한다. 한적 호출이 발생한다."
+    classpath = sourceSets["harness"].runtimeClasspath
+    mainClass.set("com.hermes.harness.DemoReachabilityMainKt")
+}

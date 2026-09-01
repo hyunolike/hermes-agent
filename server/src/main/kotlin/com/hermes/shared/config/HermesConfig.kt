@@ -101,4 +101,7 @@ class HermesConfig {
         explanationService: ExplanationService,
         explanationCache: ExplanationCache,
     ): CourseExplainer = CourseExplainer(factsSource, explanationService, explanationCache)
+
+    @Bean
+    fun demoCourses(@Value("\${hermes.demo.courses}") raw: String): DemoCourses = DemoCourses.parse(raw)
 }
