@@ -12,7 +12,7 @@ import com.hermes.explain.Explained
 import com.hermes.explain.Unavailable
 import com.hermes.llm.AnthropicExplanationProvider
 import com.hermes.llm.ExplanationProvider
-import com.hermes.llm.OpenRouterExplanationProvider
+import com.hermes.llm.OpenAiCompatibleExplanationProvider
 import java.io.File
 import kotlin.system.exitProcess
 
@@ -30,6 +30,11 @@ import kotlin.system.exitProcess
  *
  *   ./gradlew eval --args="anthropic 5"
  *   ./gradlew eval --args="openrouter 5"
+ *   ./gradlew eval --args="openai 5"
+ *
+ * openrouter 와 openai 는 같은 어댑터를 탄다 — 엔드포인트와 키만 다르고 본문
+ * 조립은 한 곳이다. 프로바이더마다 다른 어댑터를 쓰면 측정되는 것이 모델인지
+ * 요청 조립 방식인지 흐려지기 때문이다.
  */
 fun main(args: Array<String>) {
     val providerName = args.getOrNull(0) ?: "anthropic"
@@ -38,12 +43,17 @@ fun main(args: Array<String>) {
     val bundle = BundleLoader.load()
     val provider: ExplanationProvider = when (providerName) {
         "anthropic" -> AnthropicExplanationProvider(AnthropicOkHttpClient.fromEnv())
-        "openrouter" -> OpenRouterExplanationProvider(
+        "openrouter" -> OpenAiCompatibleExplanationProvider.openRouter(
             apiKey = System.getenv("OPENROUTER_API_KEY")
                 ?: error("OPENROUTER_API_KEY is not set"),
             model = System.getenv("OPENROUTER_MODEL") ?: "nvidia/nemotron-nano-9b-v2:free",
         )
-        else -> error("unknown provider: $providerName")
+        "openai" -> OpenAiCompatibleExplanationProvider.openAi(
+            apiKey = System.getenv("OPENAI_API_KEY")
+                ?: error("OPENAI_API_KEY is not set"),
+            model = System.getenv("OPENAI_MODEL") ?: "gpt-4o-mini",
+        )
+        else -> error("unknown provider: $providerName (expected anthropic, openrouter, or openai)")
     }
 
     val service = ExplanationService(PromptAssembler(bundle), CitationValidator(bundle), provider)
