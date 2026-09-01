@@ -379,6 +379,11 @@ The answer must not:
 - change visit order
 - claim real-time public API values not present in backend facts
 - claim any weather condition, because Hanjeok supplies no weather fact
+- say that crowding depends on the hour, the part of the day, or the day of the week.
+  Every congestion fact you are given covers a whole date and nothing finer. Sentences
+  like "평일 오전에는 사람이 몰려서" or "이 시간대가 붐벼서" are invented no matter how
+  reasonable they sound — the measurement behind them does not exist. A visit time in the
+  course comes from departure time plus travel time, never from crowding.
 
 ## Voice
 
