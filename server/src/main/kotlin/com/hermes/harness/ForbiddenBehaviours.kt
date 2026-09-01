@@ -11,6 +11,7 @@ enum class Behaviour {
     UNCITED_CLAIM,
     DEFERRED_DESTINATION,
     TIME_OF_DAY_REASON,
+    GRADE_MISLABEL,
 }
 
 data class Violation(val behaviour: Behaviour, val evidence: String)
@@ -28,6 +29,16 @@ object ForbiddenBehaviours {
     // 그대로 서술하는 사실 문장은 시간대 어구만 있고 혼잡도 인과 표현이 없으므로
     // 위반이 아니다.
     private val CONGESTION_TERMS = listOf("한산", "붐비", "혼잡", "여유")
+
+    // 등급 표기 오류. 처음에는 LLM 판정에 맡겼는데, 판정자가 올바른 표기("보통")를
+    // 두고 "'NORMAL' 로 써야 한다"고 뒤집어 지적하는 일이 3회 실행에서 7건 나왔다 —
+    // 방향을 헷갈린 것이다. 이 질문은 애초에 판단이 필요 없다: 틀린 표기의 어휘가
+    // 유한하므로 문자열로 결정된다. 그래서 규칙으로 내린다.
+    //
+    // 두 가지만 본다. (1) 영문 enum 이 본문에 그대로 새어 나온 경우,
+    // (2) 알려진 직역. 풀어 쓴 표현("매우 붐빈다", "한산하다")은 정상이므로 보지 않는다.
+    private val GRADE_ENUM_TOKENS = listOf("RELAXED", "NORMAL", "CROWDED", "VERY_CROWDED")
+    private val GRADE_MISTRANSLATIONS = listOf("정상적인 혼잡", "정상 등급", "정상적인 등급", "노멀", "릴랙스", "크라우디드")
     private val CAUSAL_CONNECTORS = listOf("라서", "어서", "여서", "해서", "때문", "이라", "니까")
 
     // 브리프의 원안은 "[가-힣]{2,}" 토큰에 조사가 붙으면(예: "창덕궁을") endsWith("궁")이
@@ -123,6 +134,12 @@ object ForbiddenBehaviours {
                     CAUSAL_CONNECTORS.any { sentence.contains(it) }
             }
             ?.let { violations += Violation(Behaviour.TIME_OF_DAY_REASON, it) }
+
+        // 영문 enum 노출과 직역. 둘 다 고정된 어휘라 문자열로 결정된다 — 여기서
+        // "매우 붐빈다" 같은 풀어 쓴 표현은 건드리지 않는다.
+        (GRADE_ENUM_TOKENS.filter { text.contains(it) } + GRADE_MISTRANSLATIONS.filter { text.contains(it) })
+            .distinct()
+            .forEach { violations += Violation(Behaviour.GRADE_MISLABEL, it) }
 
         val unknownCitations = explanation.citations.filterNot { it in bundle.paths() }
         if (explanation.citations.isEmpty()) {

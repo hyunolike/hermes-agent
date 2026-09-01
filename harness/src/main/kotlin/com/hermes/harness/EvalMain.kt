@@ -17,7 +17,7 @@ import java.io.File
 import kotlin.system.exitProcess
 
 /**
- * 금지 행동 6종을 센다. 실제 API 를 부르므로 돈이 든다.
+ * 금지 행동 7종을 센다. 실제 API 를 부르므로 돈이 든다.
  *
  * 서버를 띄우지 않는다 — presentation 을 건너뛰고 application 층을 직접 부르므로,
  * 여기서 통과한 프롬프트 조립과 인용 검증이 운영에서 도는 것과 같은 코드다.
@@ -81,6 +81,13 @@ fun main(args: Array<String>) {
     var explained = 0
     var unavailable = 0
 
+    // 판정은 기본으로 꺼져 있다 — 켜면 실행당 LLM 호출이 두 번이 되어 비용이
+    // 두 배다. JUDGE_MODEL 을 넣는 행위가 그 비용에 대한 동의다.
+    val judge = System.getenv("JUDGE_MODEL")?.takeIf { it.isNotBlank() }?.let { model ->
+        QualityJudge(OpenAiCompatibleJudgeProvider.openAi(requireCredential("OPENAI_API_KEY"), model))
+    }
+    val verdicts = mutableListOf<JudgeVerdict>()
+
     repeat(runs) { i ->
         when (val outcome: ExplainOutcome = service.explain(facts)) {
             is Explained -> {
@@ -90,7 +97,7 @@ fun main(args: Array<String>) {
                 println("[$i] explained — violations: ${violations.ifEmpty { "none" }}")
 
                 // 본문과 인용을 찍는다. 이 표의 0% 는 "위반이 없다"가 아니라 "이
-                // 여섯 검사가 보는 범위에서 안 걸렸다"는 뜻이고, 둘을 가르는 것은
+                // 일곱 검사가 보는 범위에서 안 걸렸다"는 뜻이고, 둘을 가르는 것은
                 // 결국 사람이 문장을 읽는 일이다. 검사들이 못 보는 것이 실제로
                 // 있다 — INVENTED_PLACE 는 궁/사/마을/골목길로 끝나는 이름만 보고,
                 // TIME_OF_DAY_REASON 은 문장을 넘는 인과를 놓치며,
@@ -98,6 +105,8 @@ fun main(args: Array<String>) {
                 // 보여 주고 본문을 감추면 그 한계가 통과로 읽힌다.
                 outcome.explanation.explanation.lineSequence().forEach { println("      $it") }
                 println("      └ 인용: ${outcome.explanation.citations.joinToString(", ")}")
+
+                judge?.let { verdicts += it.judge(outcome.explanation, factsJson, bundle) }
                 println()
             }
             is Unavailable -> {
@@ -137,6 +146,42 @@ fun main(args: Array<String>) {
             else -> "rate=%.1f%%(%d/explained=%d)".format(rate * 100, runsCount, explained)
         }
         println("  ${behaviour.name.padEnd(22)} $rateLabel".padEnd(60) + "occurrences=$occurrenceCount")
+    }
+
+    // 판정 결과는 위 표와 **합치지 않는다.** 위는 결정론적이라 같은 입력에 같은
+    // 답을 내고, 아래는 모델이 내는 의견이라 실행마다 달라질 수 있다. 둘을 한
+    // 숫자로 묶으면 그 숫자는 재현되지 않으면서 재현되는 것처럼 보인다.
+    if (judge == null) {
+        println()
+        println("quality     : 판정 안 함 (JUDGE_MODEL 미설정 — 켜면 실행당 LLM 호출이 2배가 된다)")
+    } else {
+        val notJudged = verdicts.filterIsInstance<NotJudged>()
+        val findings = verdicts.filterIsInstance<Judged>().flatMap { it.findings }
+
+        println()
+        println("── 품질 판정 (LLM · 위 표와 별개, 차단하지 않음) ──")
+        println("judge model : ${System.getenv("JUDGE_MODEL")}")
+        // "지적 없음"과 "판정 불가"를 절대 같은 줄에 두지 않는다 — 판정이 멈춘
+        // 것을 깨끗한 결과로 읽으면 이 축이 있는 의미가 없어진다.
+        println("판정함      : ${verdicts.size - notJudged.size}/${verdicts.size}")
+        if (notJudged.isNotEmpty()) {
+            println("판정 불가   : ${notJudged.size} — ${notJudged.map { it.reason }.distinct().joinToString("; ")}")
+        }
+        if (findings.isEmpty()) {
+            println("지적        : 없음")
+        } else {
+            QualityIssue.entries.forEach { issue ->
+                val count = findings.count { it.issue == issue }
+                if (count > 0) println("  ${issue.name.padEnd(22)} $count")
+            }
+            println()
+            // 지적은 인용문과 함께 찍는다. 개수만 보면 무엇을 고칠지 알 수 없고,
+            // 이 프로젝트의 프롬프트 결함 셋은 전부 문장을 읽어서 고쳤다.
+            findings.forEach { finding ->
+                println("  [${finding.issue}] \"${finding.evidence}\"")
+                println("      └ ${finding.why}")
+            }
+        }
     }
 
     if (explained == 0) {

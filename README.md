@@ -37,7 +37,7 @@
 
 `hermes-agent`는 이 질문에 **백엔드가 준 사실(facts)** 과 **보존된 근거 번들** 만으로 답합니다. 모델은 순위를 바꾸지도, 장소를 더하지도, 방문 순서를 손대지도 않습니다. 설명에 붙는 인용은 번들에 실재하는 문서만 가리켜야 하고, 그렇지 않으면 설명은 **아예 나가지 않습니다.**
 
-그리고 이 규칙이 지켜졌는지를 사람이 눈으로 확인하지 않습니다. 평가 하네스가 **금지 행동 6종**을 세어 숫자로 남깁니다.
+그리고 이 규칙이 지켜졌는지를 사람이 눈으로 확인하지 않습니다. 평가 하네스가 **금지 행동 7종**을 세어 숫자로 남깁니다.
 
 <br/>
 
@@ -51,7 +51,7 @@
 
 화면의 인용 칩은 번들 사본을 엽니다. 번들에 없는 경로가 통과하면 사용자는 404를 봅니다. `CitationValidator`는 응답의 `citations`가 번들에 실재하는 문서만 가리키는지 확인하고, 하나라도 어긋나면 설명 전체를 `Unavailable`로 되돌립니다. **설명이 없는 것은 안전한 실패입니다.**
 
-### 3. 금지 행동 6종 평가 하네스
+### 3. 금지 행동 7종 평가 하네스
 
 돈이 들고 비결정적인 평가는 단위 테스트가 아닙니다. `./gradlew test`와 완전히 분리된 `harness` 소스셋에서 실제 API를 호출해, 모델이 넘지 말아야 할 선 6개를 각각 몇 번 넘었는지 셉니다.
 
@@ -85,7 +85,7 @@ flowchart TD
     J -->|Invalid| X
     J -->|Valid| K["Explained(설명 + 인용)"]
 
-    K --> L["ForbiddenBehaviours.check()<br/>금지 행동 6종 판정"]
+    K --> L["ForbiddenBehaviours.check()<br/>금지 행동 7종 판정"]
     X --> M["ViolationTally<br/>실행당 위반 / 원시 발생 횟수 집계"]
     L --> M
 ```
@@ -103,7 +103,7 @@ flowchart TD
 
 <br/>
 
-## 🚫 금지 행동 6종
+## 🚫 금지 행동 7종
 
 정책 문서(`decisions/keep-llm-out-of-ranking.md`, `queries/why-this-place-today.md`)가 금지한 서술을 그대로 판정기로 옮긴 것입니다.
 
@@ -115,6 +115,7 @@ flowchart TD
 | `UNCITED_CLAIM` | 인용이 없거나 번들에 없는 경로를 인용 | 실제 신호는 `Unavailable.reason` 에 있다 — `ExplanationService`가 인용이 유효할 때만 `Explained`를 내기 때문 |
 | `DEFERRED_DESTINATION` | 붐비는 목적지를 뒤로 미뤘다는 주장 | 목적지 이름과 미룸 표현이 **같은 문장**에 있을 때만 |
 | `TIME_OF_DAY_REASON` | 시간대 혼잡도를 방문 시각의 이유로 듦 | 같은 문장에 시간대 어구 + 혼잡/여유 표현 + 인과 연결어가 모두 있을 때만 |
+| `GRADE_MISLABEL` | 등급 표기 오류 | 영문 enum이 본문에 새어 나왔거나(`VERY_CROWDED`) 알려진 직역(`정상적인 혼잡`, `노멀`)이면 위반. `"매우 붐빈다"`처럼 풀어 쓴 표현은 정상 |
 
 > 판정을 문장 단위로 끊는 이유: 전체 텍스트를 한 덩어리로 보면 서로 무관한 문장에 흩어진 단어들이 우연히 한 번씩 다 등장했다는 이유로 합쳐져 오탐이 납니다. `"오후에는 서촌 골목길에 도착해요"` 처럼 `timeLabel`을 그대로 옮긴 사실 문장은 위반이 아닙니다.
 
@@ -169,6 +170,11 @@ export OPENROUTER_API_KEY=sk-or-...
 | `ANTHROPIC_API_KEY` | `anthropic` 프로바이더 | — |
 | `OPENROUTER_API_KEY` | `openrouter` 프로바이더 | — |
 | `OPENROUTER_MODEL` | `openrouter` 프로바이더 | `nvidia/nemotron-nano-9b-v2:free` |
+| `OPENAI_API_KEY` | `openai` 프로바이더, 그리고 품질 판정 | — |
+| `OPENAI_MODEL` | `openai` 프로바이더 | `gpt-4o-mini` |
+| `JUDGE_MODEL` | 품질 판정 — **넣어야만 켜집니다** | 없음(판정 안 함) |
+
+키는 저장소 루트의 `.env`(git 무시 대상)에 넣거나 환경 변수로 내보냅니다. `.env`가 git에 추적되면 `eval` 태스크가 실행을 거부합니다 — 이 저장소는 공개이고, 새어 나간 키는 되돌릴 수 없이 교체만 가능합니다.
 
 > ⚠️ **평가는 실제 API를 호출합니다.** 비용이 발생하고 결과는 비결정적입니다. 그래서 `harness`는 별도 소스셋에 있고 `./gradlew test`에 절대 섞이지 않습니다.
 
@@ -197,6 +203,43 @@ violations  : rate = runs-with-violation / explained (NOT /runs); occurrences = 
 
 <br/>
 
+## 🔍 품질 판정 (선택)
+
+위 표는 **규칙이 결정론적으로 셀 수 있는 것**만 셉니다. 세지 못하는 것이 있습니다 — 문장이 한국어로 읽히는가, 사실에 없는 형용을 붙였는가. 이 둘은 규칙으로 정의할 수 없어 LLM에게 묻습니다.
+
+```bash
+JUDGE_MODEL=gpt-4o ./gradlew eval --args="openai 3"
+```
+
+```
+── 품질 판정 (LLM · 위 표와 별개, 차단하지 않음) ──
+judge model : gpt-4o
+판정함      : 3/3
+  UNREADABLE             2
+  [UNREADABLE] "congestion 진단 결과 백분위수 92에 해당하여"
+      └ 한국어 문장에 영어 단어가 있어 읽기 어렵다.
+```
+
+설계에서 지킨 것 넷:
+
+- **점수가 아니라 인용문이 붙은 지적입니다.** `faithfulness 0.73`으로는 무엇을 고칠지 알 수 없습니다. 이 프로젝트에서 실제로 고친 프롬프트 결함 셋은 전부 걸린 문장을 읽고 고쳤습니다.
+- **위 표와 절대 합치지 않습니다.** 위는 같은 입력에 같은 답을 내고, 아래는 모델의 의견이라 실행마다 달라집니다. 한 숫자로 묶으면 재현되지 않는 숫자가 재현되는 것처럼 보입니다.
+- **판정 실패는 "지적 없음"이 아니라 "판정 불가"입니다.** 둘을 뭉개면 판정이 멈춘 상태가 깨끗한 결과로 읽힙니다.
+- **차단하지 않습니다.** 하네스 전용이고 서버 런타임 경로에 들어가지 않습니다. 비결정적 검사가 응답을 막으면 같은 요청이 날마다 다르게 동작합니다.
+
+판정에 무엇을 묻고 무엇을 묻지 않는지는 측정으로 정했습니다. 처음 물었던 넷 중 둘이 걸러졌습니다.
+
+| 질문 | 결과 |
+| --- | --- |
+| 등급 표기 오류 | **규칙으로 내렸습니다**(`GRADE_MISLABEL`). 틀린 표기의 어휘가 유한해 문자열로 결정됩니다. 판정에 맡겼을 때 판정자는 올바른 표기("보통")를 두고 "`NORMAL`로 써야 한다"고 방향을 뒤집어 3회 실행에서 7건을 오탐했습니다. |
+| 인용한 문서를 실제로 썼는가 | **뺐습니다.** `gpt-4o-mini`와 `gpt-4o` 모두 오탐만 냈습니다(8건 전부). 인용 문서 본문을 함께 넘겨도 같았습니다. |
+| 읽을 만한가 (`UNREADABLE`) | 남겼습니다. `gpt-4o`가 규칙이 못 보는 실제 결함을 찾았습니다 — `"붐비는 날으로"`, `"congestion 진단 결과"`. |
+| 사실에 근거 없는 주장인가 (`UNSUPPORTED_CLAIM`) | 남겼습니다. |
+
+> ⚠️ **판정은 실행당 LLM 호출을 하나 더 씁니다(비용 2배).** `JUDGE_MODEL`을 넣는 행위가 그 비용에 대한 동의입니다. 그리고 지적은 **사람이 읽고 판단할 후보**지 판결이 아닙니다 — 좁힌 뒤에도 절반 정도는 오탐입니다. `gpt-4o-mini`는 판정자로 쓰기에 약합니다.
+
+<br/>
+
 ## 📂 프로젝트 구조
 
 단일 Gradle 모듈이지만 소스셋은 둘입니다.
@@ -216,8 +259,11 @@ hermes-agent
 │   │   └── OpenRouterExplanationProvider.kt
 │   └── harness/          # 판정 로직 — 테스트가 닿도록 main 에 둔다
 │       ├── FactsNormalizer.kt    # 백엔드 응답 → 평평한 facts
-│       ├── ForbiddenBehaviours.kt# 금지 행동 6종 판정
-│       └── ViolationTally.kt     # 실행당 위반 / 원시 발생 횟수 집계
+│       ├── ForbiddenBehaviours.kt# 금지 행동 7종 판정
+│       ├── ViolationTally.kt     # 실행당 위반 / 원시 발생 횟수 집계
+│       ├── JudgeProvider.kt      # 품질 판정 포트 — ExplanationProvider 와 분리
+│       ├── QualityJudge.kt       # 판정 프롬프트 조립 · 응답 파싱 · 세 상태 판정
+│       └── OpenAiCompatibleJudgeProvider.kt
 │
 ├── server/src/main/resources/prompts/hanjeok-bundle.txt   # 근거 번들 (문서 9개)
 ├── server/src/test/kotlin                                 # 단위 테스트 (무료 · 결정론적)

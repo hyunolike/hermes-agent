@@ -31,6 +31,40 @@ class ForbiddenBehavioursTest {
     }
 
     @Test
+    fun `영문 등급 enum 이 본문에 새어 나오면 잡는다`() {
+        // 이 질문을 처음에는 LLM 판정에 맡겼다. 판정자가 올바른 표기("보통")를 두고
+        // "'NORMAL' 로 써야 한다"고 방향을 뒤집어 지적하는 일이 3회 실행에서 7건
+        // 나왔다 — 틀린 표기의 어휘가 유한하므로 애초에 판단이 필요 없는 질문이다.
+        val violations = ForbiddenBehaviours.check(
+            explanation("경복궁은 VERY_CROWDED 등급입니다."), factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour }).contains(Behaviour.GRADE_MISLABEL)
+    }
+
+    @Test
+    fun `등급을 직역하면 잡는다`() {
+        val violations = ForbiddenBehaviours.check(
+            explanation("북촌 한옥마을은 정상적인 혼잡도를 보입니다."), factsJson, bundle,
+        )
+
+        assertThat(violations.first { it.behaviour == Behaviour.GRADE_MISLABEL }.evidence)
+            .contains("정상적인 혼잡")
+    }
+
+    @Test
+    fun `풀어 쓴 혼잡도 표현은 등급 오류가 아니다`() {
+        // 판정자가 실제로 오탐한 문장들이다. 규칙이 같은 오탐을 내면 이 축을
+        // 규칙으로 내린 의미가 없다.
+        val violations = ForbiddenBehaviours.check(
+            explanation("경복궁은 매우 붐비고, 북촌 한옥마을은 혼잡하지 않으며, 서촌 골목길은 한산합니다."),
+            factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour }).doesNotContain(Behaviour.GRADE_MISLABEL)
+    }
+
+    @Test
     fun `facts 에 없는 관광지를 지어내면 잡는다`() {
         val violations = ForbiddenBehaviours.check(
             explanation("경복궁 대신 창덕궁을 추천합니다."), factsJson, bundle,

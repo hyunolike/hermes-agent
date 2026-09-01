@@ -124,7 +124,7 @@ fun JavaExec.applyDotEnv() {
 
 tasks.register<JavaExec>("eval") {
     group = "verification"
-    description = "금지 행동 6종을 센다. API 키가 필요하고 실제 비용이 발생한다."
+    description = "금지 행동 7종을 센다. API 키가 필요하고 실제 비용이 발생한다."
     classpath = sourceSets["harness"].runtimeClasspath
     mainClass.set("com.hermes.harness.EvalMainKt")
     applyDotEnv()
