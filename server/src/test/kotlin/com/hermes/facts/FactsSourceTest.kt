@@ -65,6 +65,34 @@ class FactsSourceTest {
     }
 
     @Test
+    fun `목적지는 items 배열의 등장 순서가 아니라 visitOrder 최솟값으로 정해진다`() {
+        // CourseRoutePolicy.bestOrder 가 listOf(originId) + best 를 반환하므로
+        // 목적지(visitOrder 1)는 늘 개념적으로 첫 방문지이지만, 그 사실이 JSON
+        // items 배열의 물리적 순서까지 보장하지는 않는다. 여기서는 일부러
+        // visitOrder 2 항목을 배열 앞에 두고, 혼잡도/대안 호출이 그래도
+        // visitOrder 1 인 attractionId 1001 을 대상으로 하는지 확인한다.
+        // (items.first() 로 잘못 구현해도 이 배열 순서에서는 걸리지 않는
+        // 브리프 픽스처와 달리, 이 테스트는 순서를 뒤집어 그 실수를 잡는다.)
+        val client = object : FakeClient() {
+            override fun course(courseUuid: String): JsonNode = mapper.readTree(
+                """
+                {"targetDate":"2026-08-15","title":"제목","congestionReductionRate":34,"summary":"요약",
+                 "recommendedDate":null,
+                 "items":[{"attractionId":1003,"name":"북촌 한옥마을","visitOrder":2,"timeLabel":"오전 11:38",
+                           "grade":"NORMAL","reason":"한산","travelMinutesFromPrev":8},
+                          {"attractionId":1001,"name":"경복궁","visitOrder":1,"timeLabel":"오전 10:00",
+                           "grade":"VERY_CROWDED","reason":"첫 방문지","travelMinutesFromPrev":null}]}
+                """.trimIndent(),
+            )
+        }
+
+        FactsSource(client, 15, executor).fetch("abc")
+
+        assertThat(client.calls).contains("congestion:1001:2026-08-15", "alternatives:1001:2026-08-15:15")
+        assertThat(client.calls).noneMatch { it.startsWith("congestion:1003") || it.startsWith("alternatives:1003") }
+    }
+
+    @Test
     fun `조립된 facts 가 검사기와 프롬프트가 읽는 모양이다`() {
         val facts = FactsSource(FakeClient(), 15, executor).fetch("abc")
         val parsed = mapper.readTree(facts.json)
@@ -140,6 +168,20 @@ class FactsSourceTest {
                 mapper.readTree("""{"targetDate":"2026-08-15"}""")
         }
         assertThatThrownBy { FactsSource(client, 15, executor).fetch("abc") }
+            .isInstanceOf(HanjeokUnavailableException::class.java)
+    }
+
+    @Test
+    fun `executor 가 종료됐으면 RejectedExecutionException 이 HanjeokUnavailableException 으로 바뀐다`() {
+        // supplyAsync 는 executor 가 종료됐거나 포화 상태면 Future 안이 아니라
+        // 호출 스레드에서 곧바로 RejectedExecutionException 을 던진다 —
+        // join() 의 catch(CompletionException) 는 이 경로를 전혀 보지 못한다.
+        // 나중 태스크가 이 executor 를 destroyMethod = "shutdown" 인 Spring
+        // 빈으로 등록하므로, 종료 도중 도착한 요청이 정확히 이 경로를 탄다.
+        val shutDownExecutor = Executors.newFixedThreadPool(1)
+        shutDownExecutor.shutdown()
+
+        assertThatThrownBy { FactsSource(FakeClient(), 15, shutDownExecutor).fetch("abc") }
             .isInstanceOf(HanjeokUnavailableException::class.java)
     }
 
