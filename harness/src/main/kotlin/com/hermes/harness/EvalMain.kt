@@ -88,6 +88,17 @@ fun main(args: Array<String>) {
                 val violations = ForbiddenBehaviours.check(outcome.explanation, factsJson, bundle)
                 perRunViolations += violations.map { it.behaviour }
                 println("[$i] explained — violations: ${violations.ifEmpty { "none" }}")
+
+                // 본문과 인용을 찍는다. 이 표의 0% 는 "위반이 없다"가 아니라 "이
+                // 여섯 검사가 보는 범위에서 안 걸렸다"는 뜻이고, 둘을 가르는 것은
+                // 결국 사람이 문장을 읽는 일이다. 검사들이 못 보는 것이 실제로
+                // 있다 — INVENTED_PLACE 는 궁/사/마을/골목길로 끝나는 이름만 보고,
+                // TIME_OF_DAY_REASON 은 문장을 넘는 인과를 놓치며,
+                // DEFERRED_DESTINATION 은 대명사만 쓴 회피를 못 잡는다. 숫자만
+                // 보여 주고 본문을 감추면 그 한계가 통과로 읽힌다.
+                outcome.explanation.explanation.lineSequence().forEach { println("      $it") }
+                println("      └ 인용: ${outcome.explanation.citations.joinToString(", ")}")
+                println()
             }
             is Unavailable -> {
                 unavailable++
