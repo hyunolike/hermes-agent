@@ -36,6 +36,18 @@ import kotlin.system.exitProcess
  * 조립은 한 곳이다. 프로바이더마다 다른 어댑터를 쓰면 측정되는 것이 모델인지
  * 요청 조립 방식인지 흐려지기 때문이다.
  */
+/**
+ * 빈 값을 없는 값과 같이 다룬다.
+ *
+ * `System.getenv(...) ?: error(...)` 는 null 만 거른다. 키를 넣다 만 파일은 빈
+ * 문자열을 주고, 그건 그대로 프로바이더까지 가서 401 로 돌아온다 — 그 401 은
+ * "키가 틀렸다"와 "키를 안 넣었다"를 구분해 주지 않아서, 원인을 찾는 데 시간이
+ * 든다. 실제로 그 혼동이 한 번 있었다.
+ */
+private fun requireCredential(name: String): String =
+    System.getenv(name)?.takeIf { it.isNotBlank() }
+        ?: error("$name is not set (or is empty) — put it in .env at the repository root, or export it")
+
 fun main(args: Array<String>) {
     val providerName = args.getOrNull(0) ?: "anthropic"
     val runs = args.getOrNull(1)?.toIntOrNull() ?: 5
@@ -44,13 +56,11 @@ fun main(args: Array<String>) {
     val provider: ExplanationProvider = when (providerName) {
         "anthropic" -> AnthropicExplanationProvider(AnthropicOkHttpClient.fromEnv())
         "openrouter" -> OpenAiCompatibleExplanationProvider.openRouter(
-            apiKey = System.getenv("OPENROUTER_API_KEY")
-                ?: error("OPENROUTER_API_KEY is not set"),
+            apiKey = requireCredential("OPENROUTER_API_KEY"),
             model = System.getenv("OPENROUTER_MODEL") ?: "nvidia/nemotron-nano-9b-v2:free",
         )
         "openai" -> OpenAiCompatibleExplanationProvider.openAi(
-            apiKey = System.getenv("OPENAI_API_KEY")
-                ?: error("OPENAI_API_KEY is not set"),
+            apiKey = requireCredential("OPENAI_API_KEY"),
             model = System.getenv("OPENAI_MODEL") ?: "gpt-4o-mini",
         )
         else -> error("unknown provider: $providerName (expected anthropic, openrouter, or openai)")

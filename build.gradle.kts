@@ -58,11 +58,76 @@ dependencies {
 
 tasks.test { useJUnitPlatform() }
 
+/**
+ * 프로젝트 루트의 `.env` 를 읽어 돈 쓰는 태스크에만 환경변수로 넘긴다.
+ *
+ * `.env` 는 `.gitignore` 에 있다. 이 저장소는 공개이므로, 키가 추적되는 순간
+ * 되돌릴 수 없다 — 커밋을 지워도 이미 공개된 키는 폐기하는 것 말고 방법이 없다.
+ * 그래서 이 파일은 절대 커밋되면 안 되고, 아래 doFirst 가 매 실행마다 그것을
+ * 확인한다.
+ *
+ * 형식은 `KEY=value` 또는 `export KEY=value`, 한 줄에 하나. `#` 로 시작하는 줄은
+ * 주석이다.
+ */
+fun readDotEnv(): Map<String, String> {
+    val file = rootProject.file(".env")
+    if (!file.exists()) return emptyMap()
+    return file.readLines()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.startsWith("#") }
+        .mapNotNull { line ->
+            val body = line.removePrefix("export ").trim()
+            val separator = body.indexOf('=')
+            if (separator <= 0) {
+                null
+            } else {
+                body.substring(0, separator).trim() to
+                    body.substring(separator + 1).trim().removeSurrounding("\"").removeSurrounding("'")
+            }
+        }
+        .toMap()
+}
+
+/**
+ * 값은 절대 찍지 않는다 — 이름과 "비었는지"만 보고한다.
+ *
+ * 빈 값을 조용히 통과시키면 실행은 401 로 실패하고, 그 401 은 "키가 틀렸다"와
+ * "키를 넣다 말았다"를 구분해 주지 않는다. 실제로 그 혼동이 한 번 있었다.
+ */
+fun JavaExec.applyDotEnv() {
+    val values = readDotEnv()
+    values.forEach { (key, value) -> environment(key, value) }
+
+    doFirst {
+        val tracked = providers.exec {
+            commandLine("git", "ls-files", "--error-unmatch", ".env")
+            isIgnoreExitValue = true
+        }.result.get().exitValue == 0
+        check(!tracked) {
+            ".env is tracked by git. This repository is public — remove it from the index " +
+                "and rotate every key it contains before continuing."
+        }
+
+        if (values.isEmpty()) {
+            logger.lifecycle("no .env found — relying on the ambient environment")
+        } else {
+            val blank = values.filterValues { it.isBlank() }.keys
+            logger.lifecycle("loaded from .env: ${values.keys.sorted().joinToString(", ")}")
+            check(blank.isEmpty()) {
+                "these .env entries have an empty value: ${blank.sorted().joinToString(", ")}. " +
+                    "An empty key is not a missing key — it reaches the provider and comes back 401, " +
+                    "which reads like a wrong key rather than an unfinished edit."
+            }
+        }
+    }
+}
+
 tasks.register<JavaExec>("eval") {
     group = "verification"
     description = "금지 행동 6종을 센다. API 키가 필요하고 실제 비용이 발생한다."
     classpath = sourceSets["harness"].runtimeClasspath
     mainClass.set("com.hermes.harness.EvalMainKt")
+    applyDotEnv()
 }
 
 tasks.register<JavaExec>("demoReachability") {
@@ -70,4 +135,5 @@ tasks.register<JavaExec>("demoReachability") {
     description = "고정 데모 코스가 한적에서 아직 조회되는지 확인한다. 한적 호출이 발생한다."
     classpath = sourceSets["harness"].runtimeClasspath
     mainClass.set("com.hermes.harness.DemoReachabilityMainKt")
+    applyDotEnv()
 }
