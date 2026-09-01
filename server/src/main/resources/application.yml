@@ -1,0 +1,29 @@
+hermes:
+  hanjeok:
+    base-url: ${HANJEOK_BASE_URL:https://api.hanjeok.example}
+    radius-km: 15
+    timeout-seconds: 5
+  llm:
+    model: claude-opus-5
+  cors:
+    allowed-origins: ${HERMES_CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: always
+
+# 실패 본문은 { "code": "EXPLANATION_UNAVAILABLE" } 뿐이어야 한다 — 사유 문자열은
+# 모델이 거부한 텍스트를 담을 수 있다. 이 4개 설정은 스프링 부트 기본값과
+# 이미 같지만(그래서 이 파일이 없어도 새지는 않았다), 이 파일을 만드는 지금부터는
+# "우연히 안전함"이 아니라 "명시적으로 강제함"이어야 한다.
+server:
+  error:
+    include-exception: false
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
