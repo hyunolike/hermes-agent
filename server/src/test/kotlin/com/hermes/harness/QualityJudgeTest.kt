@@ -48,19 +48,19 @@ class QualityJudgeTest {
             FakeProvider(
                 JudgeAnswered(
                     """{"findings":[
-                       {"issue":"UNSUPPORTED_CLAIM","evidence":"매우 붐비는 매력적인 장소",
-                        "why":"facts 에 매력도에 해당하는 값이 없다"}]}""",
+                       {"issue":"UNREADABLE","evidence":"매우 붐비는 날으로",
+                        "why":"'날으로' 는 한국어 어형이 아니다"}]}""",
                 ),
             ),
         )
 
-        val verdict = judge.judge(explanation("매우 붐비는 매력적인 장소입니다."), factsJson, bundle)
+        val verdict = judge.judge(explanation("경복궁은 매우 붐비는 날으로 보입니다."), factsJson, bundle)
 
         val findings = (verdict as Judged).findings
         assertThat(findings).hasSize(1)
-        assertThat(findings[0].issue).isEqualTo(QualityIssue.UNSUPPORTED_CLAIM)
-        assertThat(findings[0].evidence).isEqualTo("매우 붐비는 매력적인 장소")
-        assertThat(findings[0].why).contains("매력도")
+        assertThat(findings[0].issue).isEqualTo(QualityIssue.UNREADABLE)
+        assertThat(findings[0].evidence).isEqualTo("매우 붐비는 날으로")
+        assertThat(findings[0].why).contains("한국어")
     }
 
     @Test
