@@ -1,0 +1,11 @@
+# 키가 이미지에 들어가는 가장 흔한 경로다. 공개 저장소라 한 번 새면 교체밖에 없다.
+.env
+.env.*
+
+.git
+.gradle
+build
+frontend
+harness/fixtures
+**/node_modules
+**/.next

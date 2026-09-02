@@ -6,6 +6,8 @@ import org.springframework.boot.health.contributor.HealthIndicator
 import org.springframework.stereotype.Component
 
 /**
+ * **Anthropic 을 고른 경우에만 실질적인 검사다.** openai·openrouter 는
+ * `LlmSelection` 이 키 없이는 기동 자체를 멈추므로 여기까지 오지 못한다. 반면
  * `AnthropicOkHttpClient.fromEnv()` 는 `ANTHROPIC_API_KEY`(또는
  * `ANTHROPIC_AUTH_TOKEN`)가 없어도 던지지 않는다 — 그냥 인증되지 않은 클라이언트가
  * 만들어진다. 그걸 그대로 두면 서버는 뜨고 `UP` 을 보고하고 레디니스 프로브를
@@ -27,16 +29,22 @@ import org.springframework.stereotype.Component
  */
 @Component
 class LlmCredentialHealthIndicator(
+    @param:Value("\${hermes.llm.provider}") private val provider: String,
     @param:Value("\${ANTHROPIC_API_KEY:}") private val apiKey: String,
     @param:Value("\${ANTHROPIC_AUTH_TOKEN:}") private val authToken: String,
 ) : HealthIndicator {
 
     override fun health(): Health {
+        // 다른 프로바이더에 Anthropic 키를 요구하면, 멀쩡히 답하는 서버가 DOWN 으로
+        // 보고되고 Cloud Run 이 트래픽을 끊는다. 살아있는 서버를 죽었다고 하는 쪽이
+        // 반대 실수보다 눈에 덜 띈다 — 헬스체크는 자기가 고른 것만 봐야 한다.
+        if (provider != "anthropic") return Health.up().withDetail("provider", provider).build()
+
         if (apiKey.isBlank() && authToken.isBlank()) {
             return Health.down()
                 .withDetail("reason", "no Anthropic credential configured (ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN)")
                 .build()
         }
-        return Health.up().build()
+        return Health.up().withDetail("provider", provider).build()
     }
 }

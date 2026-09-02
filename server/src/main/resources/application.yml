@@ -9,7 +9,10 @@ hermes:
     radius-km: 15
     timeout-seconds: 5
   llm:
-    model: claude-opus-5
+    # 하네스(`./gradlew eval <provider>`)와 같은 이름을 쓴다 — 잰 것을 그대로 띄우기
+    # 위해서다. 모르는 이름은 조용히 기본값으로 떨어지지 않고 기동을 멈춘다.
+    provider: ${HERMES_LLM_PROVIDER:anthropic}
+    model: ${HERMES_LLM_MODEL:claude-opus-5}
   cors:
     allowed-origins: ${HERMES_CORS_ALLOWED_ORIGINS:http://localhost:3000}
   demo:

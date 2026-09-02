@@ -1,6 +1,5 @@
 package com.hermes.shared.config
 
-import com.anthropic.client.okhttp.AnthropicOkHttpClient
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.hermes.context.Bundle
 import com.hermes.context.BundleLoader
@@ -12,7 +11,6 @@ import com.hermes.explain.ExplanationService
 import com.hermes.facts.FactsSource
 import com.hermes.facts.HanjeokClient
 import com.hermes.facts.RestHanjeokClient
-import com.hermes.llm.AnthropicExplanationProvider
 import com.hermes.llm.ExplanationProvider
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
@@ -53,9 +51,16 @@ class HermesConfig {
     @Bean
     fun citationValidator(bundle: Bundle): CitationValidator = CitationValidator(bundle)
 
+    /**
+     * 하네스가 잰 프로바이더를 그대로 띄울 수 있어야 한다 — `EvalMain` 과 같은
+     * 세 이름(anthropic·openai·openrouter)을 쓴다. 고정돼 있던 동안은 측정한
+     * 프로바이더(OpenAI)와 도는 프로바이더(Anthropic)가 서로 달랐다.
+     */
     @Bean
-    fun explanationProvider(): ExplanationProvider =
-        AnthropicExplanationProvider(AnthropicOkHttpClient.fromEnv())
+    fun explanationProvider(
+        @Value("\${hermes.llm.provider}") provider: String,
+        @Value("\${hermes.llm.model}") model: String,
+    ): ExplanationProvider = LlmSelection.provider(provider, model, System::getenv)
 
     @Bean
     fun hanjeokRestClient(
