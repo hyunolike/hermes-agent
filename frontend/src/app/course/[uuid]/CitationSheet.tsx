@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { fetchContextDocument, type Result } from '@/lib/agent'
 
 /**
@@ -9,6 +9,7 @@ import { fetchContextDocument, type Result } from '@/lib/agent'
  */
 export function CitationSheet({ path, onClose }: { path: string; onClose: () => void }) {
   const [state, setState] = useState<Result<string> | null>(null)
+  const closeButton = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     let alive = true
@@ -26,20 +27,38 @@ export function CitationSheet({ path, onClose }: { path: string; onClose: () => 
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // 시트가 열리면 초점을 안으로 옮긴다. 안 옮기면 키보드 사용자의 초점은 뒤에 남은
+  // 칩에 그대로 있고, 화면에는 시트가 떠 있는데 Tab 은 그 아래를 돌아다닌다.
+  useEffect(() => {
+    closeButton.current?.focus()
+  }, [])
+
   return (
+    // 배경은 마우스 편의일 뿐이라 role 을 주지 않는다 — 닫는 경로는 Esc 와 닫기
+    // 버튼이고 둘 다 키보드로 닿는다. 배경에 role="button" 을 붙이면 스크린 리더가
+    // 읽을 이름 없는 버튼이 하나 생길 뿐이다.
+    //
+    // aria-hidden 도 여기 붙이면 안 된다 — 시트가 이 안에 있으므로 스크린 리더에서
+    // 대화상자째로 사라진다. 처음 그렇게 썼고 테스트가 잡았다.
     <div
       className="fixed inset-0 z-10 flex items-end justify-center bg-black/40"
       onClick={onClose}
     >
       <div
         role="dialog"
+        aria-modal="true"
         aria-label={path}
         className="max-h-[75vh] w-full max-w-3xl overflow-auto rounded-t-xl bg-[var(--background)] p-6"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-baseline justify-between gap-4">
           <h2 className="font-mono text-sm">{path}</h2>
-          <button type="button" onClick={onClose} className="text-sm opacity-60 hover:opacity-100">
+          <button
+            ref={closeButton}
+            type="button"
+            onClick={onClose}
+            className="text-sm opacity-60 hover:opacity-100"
+          >
             닫기
           </button>
         </div>

@@ -86,6 +86,80 @@ class CourseExplainerTest {
     }
 
     @Test
+    fun `같은 uuid 를 동시에 물어도 모델은 한 번만 부른다`() {
+        // 캐시는 **끝난** 호출만 막는다. 아직 진행 중인 호출은 못 막으므로, 처음
+        // 보는 코스에 요청이 몰리면 전부 캐시 미스로 각자 유료 호출을 낸다.
+        // Cloud Run 기본 동시성이 80 이라 콜드 코스 하나가 80 번 청구될 수 있다.
+        val started = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val provider = object : ExplanationProvider {
+            override val name = "slow"
+            val calls = java.util.concurrent.atomic.AtomicInteger()
+            override fun explain(systemText: String, factsJson: String): ProviderResult {
+                calls.incrementAndGet()
+                started.countDown()
+                // 첫 호출을 붙잡아 두는 동안 나머지가 도착하게 한다 — 이 겹침이
+                // 없으면 테스트는 순차 실행이 되어 아무것도 검증하지 못한다.
+                release.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                return answered()
+            }
+        }
+        val explainer = explainer(provider)
+        val pool = Executors.newFixedThreadPool(8)
+
+        val results = (1..8).map { pool.submit<CourseExplanation> { explainer.explain("abc") } }
+        started.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        release.countDown()
+        results.forEach { it.get(10, java.util.concurrent.TimeUnit.SECONDS) }
+        pool.shutdown()
+
+        assertThat(provider.calls.get())
+            .describedAs("동시 요청 8건이 유료 호출 8번이 되면 안 된다")
+            .isEqualTo(1)
+    }
+
+    @Test
+    fun `동시 요청 중 하나가 실패하면 모두 같은 실패를 받는다`() {
+        // 실패를 캐시하지 않는 규칙은 그대로다. 다만 같은 순간의 요청들은 같은
+        // 호출을 기다렸으므로 같은 결과를 받아야 한다 — 일부만 성공한 것처럼
+        // 보이면 재현할 수 없는 버그가 된다.
+        val provider = CountingProvider(Failed("boom"))
+        val explainer = explainer(provider)
+        val pool = Executors.newFixedThreadPool(4)
+
+        val results = (1..4).map {
+            pool.submit<Result<CourseExplanation>> { runCatching { explainer.explain("abc") } }
+        }
+        val outcomes = results.map { it.get(10, java.util.concurrent.TimeUnit.SECONDS) }
+        pool.shutdown()
+
+        assertThat(outcomes).allMatch { it.isFailure }
+        assertThat(outcomes.map { it.exceptionOrNull()!!::class })
+            .containsOnly(ExplanationUnavailableException::class)
+    }
+
+    @Test
+    fun `실패한 뒤에는 다시 부를 수 있다`() {
+        // 진행 중 호출을 붙잡아 두는 자리를 정리하지 않으면, 한 번 실패한 코스가
+        // 영원히 그 실패에 묶인다 — 실패를 캐시하지 않기로 한 이유가 무너진다.
+        val provider = object : ExplanationProvider {
+            override val name = "flaky"
+            var calls = 0
+            override fun explain(systemText: String, factsJson: String): ProviderResult {
+                calls++
+                return if (calls == 1) Failed("boom") else answered()
+            }
+        }
+        val explainer = explainer(provider)
+
+        assertThatThrownBy { explainer.explain("abc") }.isInstanceOf(ExplanationUnavailableException::class.java)
+        val second = explainer.explain("abc")
+
+        assertThat(second.explanation.explanation).isEqualTo("경복궁은 붐빕니다.")
+        assertThat(provider.calls).isEqualTo(2)
+    }
+
+    @Test
     fun `한적이 실패하면 설명 불가로 바뀐다`() {
         val client = object : FakeClient() {
             override fun course(courseUuid: String): JsonNode = throw HanjeokUnavailableException("down")

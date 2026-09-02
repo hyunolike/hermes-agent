@@ -39,3 +39,26 @@ describe('인용 시트', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
   })
 })
+
+describe('키보드 접근', () => {
+  it('열리면 초점이 시트 안으로 들어온다', async () => {
+    // 초점이 뒤에 남으면, 화면에는 시트가 떠 있는데 Tab 은 그 아래를 돌아다닌다.
+    vi.spyOn(agent, 'fetchContextDocument').mockResolvedValue({ kind: 'loaded', value: '본문' })
+
+    render(<CitationSheet path="a.md" onClose={() => {}} />)
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '닫기' })).toHaveFocus(),
+    )
+  })
+
+  it('대화상자임을 알린다', async () => {
+    vi.spyOn(agent, 'fetchContextDocument').mockResolvedValue({ kind: 'loaded', value: '본문' })
+
+    render(<CitationSheet path="concepts/x.md" onClose={() => {}} />)
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(dialog).toHaveAccessibleName('concepts/x.md')
+  })
+})
