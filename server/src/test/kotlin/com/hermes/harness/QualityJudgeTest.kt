@@ -64,6 +64,34 @@ class QualityJudgeTest {
     }
 
     @Test
+    fun `본문에 없는 인용문은 지적으로 세지 않도록 표시한다`() {
+        // gpt-4o 가 evidence 로 "..." 를 낸 적이 있다. 그런 지적은 무엇을 고칠지
+        // 가리키지 못하는데, 실제 지적과 같이 세면 개수만 부풀어 오른다.
+        val judge = QualityJudge(
+            FakeProvider(JudgeAnswered("""{"findings":[{"issue":"UNREADABLE","evidence":"...","why":"..."}]}""")),
+        )
+
+        val findings = (judge.judge(explanation("경복궁은 붐빕니다."), factsJson, bundle) as Judged).findings
+
+        // 버리지는 않는다 — 판정자가 헛도는 것도 알아야 할 사실이다.
+        assertThat(findings).hasSize(1)
+        assertThat(findings[0].evidenceFound).isFalse()
+    }
+
+    @Test
+    fun `본문에 그대로 있는 인용문은 확인된 것으로 표시한다`() {
+        val judge = QualityJudge(
+            FakeProvider(
+                JudgeAnswered("""{"findings":[{"issue":"UNREADABLE","evidence":"붐비는 날으로","why":"비문"}]}"""),
+            ),
+        )
+
+        val findings = (judge.judge(explanation("경복궁은 매우 붐비는 날으로 보입니다."), factsJson, bundle) as Judged).findings
+
+        assertThat(findings[0].evidenceFound).isTrue()
+    }
+
+    @Test
     fun `판정 실패는 지적 없음이 아니라 판정 불가다`() {
         // 이 프로젝트에서 반복해 값을 한 규칙이다 — "위반 없음" 과 "잴 수 없음" 을
         // 같은 자리에 두면, 측정이 멈춘 것을 아무도 모른다.

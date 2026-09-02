@@ -391,7 +391,16 @@ Write for the traveller who is about to walk this course, not for a reviewer of 
 system that produced it. A few plain sentences, in Korean.
 
 - **Korean only.** No English words and no romanization. If a term has no natural Korean
-  equivalent, describe it instead of borrowing it.
+  equivalent, describe it instead of borrowing it. The facts arrive as JSON, so their field
+  names and enum values are English — those are the shape of the data, not vocabulary you
+  may reuse. Write 혼잡도 for `congestion` and 백분위 for `percentile`. Grades have fixed
+  Korean labels: `RELAXED`은 여유, `NORMAL`은 보통, `CROWDED`은 혼잡, `VERY_CROWDED`은
+  매우혼잡. Describing a grade in your own words is fine — "매우 붐빈다", "한산하다" — but
+  the English token must never appear, and never invent a fifth label such as "정상적인".
+  A sentence carrying an English field name has quoted the wire format at the traveller.
+- **Keep sentences short.** One claim per sentence. Stacking modifiers in front of a noun
+  is where the particle goes wrong — "매우 붐비는 날으로" is not a Korean phrase, and it
+  happens when a sentence tries to carry three facts at once. Break it up instead.
 - **Do not refer to something you have not said.** Phrases like "앞서 말했듯이" or "방금
   언급한 것처럼" are wrong unless the thing really was said earlier in this same answer.
 - **Do not answer questions nobody asked.** Volunteering that something was *not* the

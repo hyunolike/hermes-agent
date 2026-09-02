@@ -25,7 +25,18 @@ enum class QualityIssue {
     UNSUPPORTED_CLAIM,
 }
 
-data class QualityFinding(val issue: QualityIssue, val evidence: String, val why: String)
+/**
+ * @param evidenceFound 인용문이 설명 본문에 실제로 있는가. 판정자가 `"..."` 같은
+ *   자리표시자나 요약한 문장을 evidence 로 내는 일이 있다 — 그런 지적은 무엇을
+ *   고칠지 가리키지 못하므로 실제 지적과 같은 자리에 세면 개수가 부풀려진다.
+ *   조용히 버리지는 않는다. 판정자가 헛도는 것도 알아야 할 사실이다.
+ */
+data class QualityFinding(
+    val issue: QualityIssue,
+    val evidence: String,
+    val why: String,
+    val evidenceFound: Boolean,
+)
 
 sealed interface JudgeVerdict
 
@@ -58,10 +69,10 @@ class QualityJudge(private val provider: JudgeProvider) {
             is JudgeAnswered -> response.body
         }
 
-        return parse(body)
+        return parse(body, explanation.explanation)
     }
 
-    private fun parse(body: String): JudgeVerdict {
+    private fun parse(body: String, explanationText: String): JudgeVerdict {
         val root = try {
             MAPPER.readTree(body)
         } catch (e: Exception) {
@@ -78,10 +89,12 @@ class QualityJudge(private val provider: JudgeProvider) {
             // 모르는 값을 조용히 버리면 판정이 절반만 작동하는데 결과는 깨끗해 보인다.
             val issue = QualityIssue.entries.firstOrNull { it.name == raw }
                 ?: return NotJudged("모르는 issue 값: '$raw'")
+            val evidence = node.path("evidence").asText("")
             parsed += QualityFinding(
                 issue = issue,
-                evidence = node.path("evidence").asText(""),
+                evidence = evidence,
                 why = node.path("why").asText(""),
+                evidenceFound = evidence.isNotBlank() && explanationText.contains(evidence),
             )
         }
         return Judged(parsed)

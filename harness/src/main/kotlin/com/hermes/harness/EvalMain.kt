@@ -156,7 +156,11 @@ fun main(args: Array<String>) {
         println("quality     : 판정 안 함 (JUDGE_MODEL 미설정 — 켜면 실행당 LLM 호출이 2배가 된다)")
     } else {
         val notJudged = verdicts.filterIsInstance<NotJudged>()
-        val findings = verdicts.filterIsInstance<Judged>().flatMap { it.findings }
+        val all = verdicts.filterIsInstance<Judged>().flatMap { it.findings }
+        // 인용문이 본문에 없는 지적은 무엇을 고칠지 가리키지 못한다. 버리지 않고
+        // 따로 센다 — 실제 지적과 섞으면 개수만 부풀고, 감추면 판정자가 헛도는
+        // 것을 알 수 없다.
+        val (findings, unanchored) = all.partition { it.evidenceFound }
 
         println()
         println("── 품질 판정 (LLM · 위 표와 별개, 차단하지 않음) ──")
@@ -166,6 +170,9 @@ fun main(args: Array<String>) {
         println("판정함      : ${verdicts.size - notJudged.size}/${verdicts.size}")
         if (notJudged.isNotEmpty()) {
             println("판정 불가   : ${notJudged.size} — ${notJudged.map { it.reason }.distinct().joinToString("; ")}")
+        }
+        if (unanchored.isNotEmpty()) {
+            println("확인 불가   : ${unanchored.size} — 인용문이 본문에 없다(판정자가 요약했거나 자리표시자를 냈다)")
         }
         if (findings.isEmpty()) {
             println("지적        : 없음")
