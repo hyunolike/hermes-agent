@@ -11,14 +11,14 @@ jobs:
   server:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # 위키를 체크아웃해 번들을 다시 만든다. 커밋된 번들과 다르면 실패시킨다 —
       # 위키가 바뀌었는데 레포의 번들이 옛것이면, 화면이 보여 주는 근거와 모델이
       # 실제로 본 근거가 갈라진다. 그 갈라짐은 조용하고, 이 프로젝트가 막으려는
       # 것이 정확히 그런 침묵이다.
       - name: Check out the wiki
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: hyunolike/travel-context-wiki
           path: wiki
@@ -38,7 +38,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -57,11 +57,11 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: pnpm
