@@ -92,19 +92,37 @@ curl -s "$BASE/agent/facts/<uuid>"     # 한적 연결 확인. 503이면 한적�
 예외가 아니라 "불러오지 못했습니다" 화면이 된다. 첫 빌드가 이것 때문에 죽은 적이 있어
 CI가 매번 확인한다.
 
+## 배포된 것
+
+| 항목 | 값 |
+| --- | --- |
+| 서버 | `https://hermes-agent-508380543987.asia-northeast3.run.app` |
+| 이미지 | `asia-northeast3-docker.pkg.dev/hanjeok-prod/hermes/hermes-agent` |
+| 한적 | `https://api.hanjeok.com` (VM `hanjeok-app`, 34.50.38.158) |
+| 프로바이더 | `openai` / `gpt-4o` |
+| 시크릿 | `hermes-openai-key` — 런타임 서비스 계정에 **그 시크릿에만** accessor 부여 |
+| 인스턴스 | 최소 0, 최대 3, 1Gi |
+
+배포하며 막힌 것 셋: Cloud Run·Cloud Build API 미활성화, Artifact Registry `hermes`
+저장소 없음(이미지는 빌드됐고 push만 실패했다), 런타임 서비스 계정의 시크릿 권한 없음.
+
 ## 데모 코스
 
-배포해도 **띄울 코스가 없다.** 한적에 코스 3종을 만들어 uuid를 정해야 한다.
+한적에 만들어 둔 셋이다(전부 2026-09-12).
 
-1. 목적지가 매우혼잡이고 대안이 붙은 코스
-2. 대안이 비어 있는 코스
-3. `recommendedDate`가 다른 날을 가리키는 코스
+| 종류 | uuid | 코스 |
+| --- | --- | --- |
+| `crowded-with-alternatives` | `129efdef-…` | 덕수궁(매우혼잡) + 대안 2개, 감소율 39% |
+| `no-alternatives` | `e66302c6-…` | 경복궁 — 대안 0개, 세 장소 전부 매우혼잡이라 **감소율 0%** |
+| `better-date` | `5a2eb601-…` | 국립중앙박물관 — 9월 24일을 권함(감소율 32%) |
 
-셋은 서로 다른 문서를 인용하게 되므로, 인용 검증이 실제로 작동하는지가 데모에서 드러난다.
-uuid가 정해지면 `frontend/src/lib/demo-courses.ts`에 넣고, 도달성을 확인한다.
+두 번째가 이 데모에서 가장 값을 한다. 줄지 않은 혼잡도를 줄었다고 말하지 않는지,
+없는 대안을 지어내지 않는지가 거기서 드러난다.
 
 ```bash
-HANJEOK_BASE_URL=<주소> HERMES_DEMO_COURSES="<uuid>|매우혼잡+대안" ./gradlew demoReachability
+HANJEOK_BASE_URL=https://api.hanjeok.com \
+HERMES_DEMO_COURSES="129efdef-41ec-4044-ac87-303abe4ccdde|덕수궁, e66302c6-b413-4a07-88a5-3bd55e61fc2a|경복궁, 5a2eb601-1f2b-499b-83eb-8a0093f4817e|국립중앙박물관" \
+  ./gradlew demoReachability
 ```
 
 코스가 삭제되면 데모가 깨진다. 이건 결함이 아니라 "사실은 백엔드에서만 온다"를 지킨

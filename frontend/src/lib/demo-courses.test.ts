@@ -2,10 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { DEMO_COURSES, missingKinds } from './demo-courses'
 
 describe('데모 코스', () => {
-  it('아직 비어 있다 — 한적에 코스를 만들어야 정해진다', () => {
-    // 가짜 uuid 를 채워 두면 화면은 뜨는데 전부 503 이 나고, 서버 문제인지
-    // uuid 문제인지 구분되지 않는다.
-    expect(DEMO_COURSES).toEqual([])
+  it('세 종류가 모두 있다', () => {
+    // 개수가 아니라 종류가 기준이다. 셋은 각각 번들의 다른 문서를 인용하게 되므로,
+    // 인용 검증이 실제로 작동하는지가 데모에서 드러난다.
+    expect(missingKinds()).toEqual([])
+    expect(DEMO_COURSES).toHaveLength(3)
+  })
+
+  it('uuid 가 서로 다르다', () => {
+    // 같은 uuid 를 두 번 넣으면 목록은 셋인데 데모는 하나다.
+    expect(new Set(DEMO_COURSES.map((c) => c.uuid)).size).toBe(DEMO_COURSES.length)
   })
 
   it('빠진 종류를 센다', () => {
