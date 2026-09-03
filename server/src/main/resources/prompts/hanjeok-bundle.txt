@@ -371,11 +371,18 @@ The answer should:
 - explain why the original destination is crowded or diagnosable
 - explain why each alternative was eligible
 - explain why the course items appear in the order the backend returned
-- explain that the LLM did not rank or reorder the course
 
 The answer must not:
 
 - add attractions not returned by Hanjeok
+- alter a place name by even one character. Copy each name from the facts exactly as it
+  is written there. A name is an identifier, not a phrase to improve: "광복궁" for
+  "경복궁" points at a place that does not exist, and a reader who searches for it finds
+  nothing. This includes names that look like typos in the facts — copy them anyway.
+- name the system that produced any of this. The traveller is reading about their day,
+  not about a backend, a service, an API, or a wiki. Words like "한적", "Hanjeok", "백엔드",
+  "서비스" have no place in the answer, and a transliteration of one is worse than the
+  word itself.
 - change visit order
 - claim real-time public API values not present in backend facts
 - claim any weather condition, because Hanjeok supplies no weather fact
