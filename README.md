@@ -171,7 +171,13 @@ export ANTHROPIC_API_KEY=sk-ant-...
 # OpenRouter 무료 티어와 비교
 export OPENROUTER_API_KEY=sk-or-...
 ./gradlew eval --args="openrouter 5"
+
+# 픽스처가 아니라 한적의 실제 코스로 잰다
+HANJEOK_BASE_URL=https://api.hanjeok.com \
+  ./gradlew eval --args="openai 3 <courseUuid>"
 ```
+
+마지막 형태가 중요합니다. 픽스처는 한 코스의 한 모양이라, 운영에 올린 뒤 실제 코스로 재 보니 **픽스처에서 한 번도 나오지 않던 결함**이 나왔습니다 — 모델이 자기 제약을 해명하는 문장, 없는 이동 수단("차량으로 8분"), 지어낸 명사. 프롬프트를 고칠 때마다 손으로 확인하지 않으려면 하네스가 실제 코스를 잴 수 있어야 합니다.
 
 | 환경 변수 | 필요 시점 | 기본값 |
 | --- | --- | --- |

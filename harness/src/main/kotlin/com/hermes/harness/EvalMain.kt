@@ -12,8 +12,12 @@ import com.hermes.explain.Explained
 import com.hermes.explain.Unavailable
 import com.hermes.llm.AnthropicExplanationProvider
 import com.hermes.llm.ExplanationProvider
+import com.hermes.facts.FactsSource
+import com.hermes.facts.RestHanjeokClient
 import com.hermes.llm.OpenAiCompatibleExplanationProvider
+import org.springframework.web.client.RestClient
 import java.io.File
+import java.util.concurrent.Executors
 import kotlin.system.exitProcess
 
 /**
@@ -31,6 +35,16 @@ import kotlin.system.exitProcess
  *   ./gradlew eval --args="anthropic 5"
  *   ./gradlew eval --args="openrouter 5"
  *   ./gradlew eval --args="openai 5"
+ *
+ * 세 번째 인자로 코스 uuid 를 주면 픽스처 대신 **한적에서 실제 사실을 받아** 잰다
+ * (HANJEOK_BASE_URL 필요).
+ *
+ *   HANJEOK_BASE_URL=https://api.hanjeok.com ./gradlew eval --args="openai 3 <uuid>"
+ *
+ * 픽스처는 한 코스의 한 모양이다. 운영에 올린 뒤 실제 코스로 재 보니 픽스처에서
+ * 한 번도 나오지 않던 결함이 나왔다 — 모델이 자기 제약을 해명하는 문장, 없는
+ * 이동 수단, 지어낸 명사. 프롬프트를 고칠 때마다 손으로 curl 하지 않으려면
+ * 하네스가 실제 코스를 잴 수 있어야 한다.
  *
  * openrouter 와 openai 는 같은 어댑터를 탄다 — 엔드포인트와 키만 다르고 본문
  * 조립은 한 곳이다. 프로바이더마다 다른 어댑터를 쓰면 측정되는 것이 모델인지
@@ -68,10 +82,24 @@ fun main(args: Array<String>) {
 
     val service = ExplanationService(PromptAssembler(bundle), CitationValidator(bundle), provider)
 
-    val fixture = ObjectMapper().readTree(File("harness/fixtures/course-explanation-request.json"))
-    val courseUuid = fixture.get("courseUuid").asText()
-    val factsJson = FactsNormalizer.normalize(fixture).toString()
-    val facts = BackendFacts(courseUuid, factsJson)
+    // 세 번째 인자가 있으면 한적에서 실제 사실을 받는다. 없으면 픽스처를 쓴다 —
+    // 기본 경로가 네트워크를 타면 평가가 한적 가용성에 묶인다.
+    val facts = args.getOrNull(2)?.takeIf { it.isNotBlank() }?.let { uuid ->
+        val baseUrl = requireCredential("HANJEOK_BASE_URL")
+        val executor = Executors.newFixedThreadPool(4)
+        try {
+            FactsSource(RestHanjeokClient(RestClient.builder().baseUrl(baseUrl).build()), 15, executor)
+                .fetch(uuid)
+                .also { println("facts: 한적 $baseUrl, 코스 $uuid (${it.json.length}자)") }
+        } finally {
+            executor.shutdown()
+        }
+    } ?: run {
+        val fixture = ObjectMapper().readTree(File("harness/fixtures/course-explanation-request.json"))
+        println("facts: 픽스처 (실제 코스로 재려면 세 번째 인자에 uuid)")
+        BackendFacts(fixture.get("courseUuid").asText(), FactsNormalizer.normalize(fixture).toString())
+    }
+    val factsJson = facts.json
 
     // 실행마다 그 실행에서 있었던 위반의 전체 다중집합을 모아 뒀다가, 루프가
     // 끝난 뒤 ViolationTally.aggregate 로 한 번에 집계한다 — "실행당 최대 1"과
