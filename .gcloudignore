@@ -1,0 +1,10 @@
+# Cloud Build 로 올라가는 컨텍스트에서 뺀다. .env 가 여기 포함되면 키가 빌드
+# 로그와 소스 스테이징 버킷에 남는다 — 공개 저장소의 키만큼이나 되돌리기 어렵다.
+.env
+.env.*
+.git
+.gradle
+build
+frontend
+**/node_modules
+**/.next
