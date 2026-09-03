@@ -82,9 +82,24 @@ curl -s "$BASE/agent/facts/<uuid>"     # 한적 연결 확인. 503이면 한적�
 
 | 항목 | 값 |
 | --- | --- |
-| Root Directory | `frontend` |
+| 프로젝트 | `hermes-agent` (팀 `hyunho-jangs-projects`) |
+| Root Directory | `frontend` — CLI 를 그 디렉터리에서 돌리면 자동으로 그렇게 된다 |
 | Framework | Next.js (자동 감지) |
-| 환경 변수 | `NEXT_PUBLIC_AGENT_BASE_URL` = Cloud Run 주소 |
+| 환경 변수 | `NEXT_PUBLIC_AGENT_BASE_URL` = Cloud Run 주소 (production·preview·development 셋 다) |
+| 도메인 | `agent.hanjeok.com` — 가비아에 CNAME → `cname.vercel-dns.com.` |
+
+```bash
+cd frontend
+vercel deploy --prod
+```
+
+**CORS 를 잊지 말 것.** 도메인을 붙인 뒤 Cloud Run 에 그 오리진을 넣어야 한다. gcloud 는
+값 안의 쉼표를 구분자로 읽으므로 구분자를 바꿔 준다.
+
+```bash
+gcloud run services update hermes-agent --region asia-northeast3 \
+  --update-env-vars "^@^HERMES_CORS_ALLOWED_ORIGINS=https://agent.hanjeok.com,http://localhost:3000"
+```
 
 프론트에 내려가는 것은 이 주소 하나뿐이다. 한적 주소도, 어떤 키도 브라우저로 가지 않는다.
 
@@ -102,6 +117,8 @@ CI가 매번 확인한다.
 | 프로바이더 | `openai` / `gpt-4o` |
 | 시크릿 | `hermes-openai-key` — 런타임 서비스 계정에 **그 시크릿에만** accessor 부여 |
 | 인스턴스 | 최소 0, 최대 3, 1Gi |
+| 화면 | `https://agent.hanjeok.com` (Vercel, 프로젝트 `hermes-agent`) |
+| CORS | `agent.hanjeok.com`, `hermes-agent-olive-beta.vercel.app`, `localhost:3000` |
 
 배포하며 막힌 것 셋: Cloud Run·Cloud Build API 미활성화, Artifact Registry `hermes`
 저장소 없음(이미지는 빌드됐고 push만 실패했다), 런타임 서비스 계정의 시크릿 권한 없음.
