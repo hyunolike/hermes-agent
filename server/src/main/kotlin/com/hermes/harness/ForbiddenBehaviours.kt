@@ -62,6 +62,12 @@ object ForbiddenBehaviours {
 
     // (2) 혼잡도를 순서의 기준으로 든다. 목적지는 고정이고 나머지는 이동 시간으로
     // 정렬되므로, 덜 붐비는 곳을 먼저 가도록 정했다는 것은 하지 않은 계산이다.
+    // 순서를 **주장하는** 문장을 가르는 표지. 대안을 나열하거나 혼잡도를 비교하는
+    // 문장은 순서 주장이 아닌데, 등장 순서만 보면 그것까지 위반이 된다 — 실제
+    // 운영 설명 하나가 방문 순서를 정확히 써 놓고도 첫 문단의 나열 때문에 걸렸다.
+    private val SEQUENCE_MARKERS =
+        listOf("먼저", "그다음", "그 다음", "다음으로", "이어", "이후", "마지막", "순서", "순으로", "번째", "출발")
+
     private val CONGESTION_WORDS = listOf("혼잡", "붐비", "한산", "여유로운")
     private val PRECEDENCE_WORDS = listOf("먼저", "우선", "낮은 순", "순으로")
 
@@ -123,13 +129,18 @@ object ForbiddenBehaviours {
             .distinct()
             .forEach { violations += Violation(Behaviour.INVENTED_PLACE, it) }
 
-        // 코스 순서 주장. 설명에 등장하는 순서가 visitOrder 와 다른가.
+        // 코스 순서 주장. **순서를 주장하는 문장 안에서** 장소가 나오는 차례가
+        // visitOrder 와 다른가. 문장 여럿에 걸쳐 있어도 되므로(한 문장에 한 장소씩
+        // 나눠 쓰는 설명이 흔하다) 그런 문장만 모아 원문 순서대로 이어 붙여 본다.
         val declaredOrder = facts.at("/items")
             .sortedBy { it.at("/visitOrder").asInt() }
             .map { it.at("/name").asText() }
+        val sequenceText = sentences(text)
+            .filter { sentence -> SEQUENCE_MARKERS.any { sentence.contains(it) } }
+            .joinToString(" ")
         val mentionedOrder = declaredOrder
-            .filter { text.contains(it) }
-            .sortedBy { text.indexOf(it) }
+            .filter { sequenceText.contains(it) }
+            .sortedBy { sequenceText.indexOf(it) }
         val expectedSubsequence = declaredOrder.filter { it in mentionedOrder }
         if (mentionedOrder.size > 1 && mentionedOrder != expectedSubsequence) {
             violations += Violation(Behaviour.REORDERED_COURSE, mentionedOrder.joinToString(" → "))

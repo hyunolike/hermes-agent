@@ -31,6 +31,46 @@ class ForbiddenBehavioursTest {
     }
 
     @Test
+    fun `순서를 뒤바꿔 서술하면 잡는다`() {
+        val violations = ForbiddenBehaviours.check(
+            explanation("서촌 골목길을 먼저 들르고, 그다음 경복궁으로 갑니다."),
+            factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour }).contains(Behaviour.REORDERED_COURSE)
+    }
+
+    @Test
+    fun `순서 주장이 아닌 언급 순서는 잡지 않는다`() {
+        // 실측 오탐. 대안을 나열하거나 혼잡도를 비교하는 문장은 순서 주장이 아닌데,
+        // 등장 순서만 보면 위반이 된다. 실제 운영에서 나온 아래 설명은 두 번째 문단에서
+        // 방문 순서를 정확히 말한다 — 그런데도 첫 문단의 나열 때문에 걸렸다.
+        val violations = ForbiddenBehaviours.check(
+            explanation(
+                "덕수궁을 첫 방문지로 고정하고, 서촌 골목길과 북촌 한옥마을을 덜 혼잡한 대체지로 추천했어요. " +
+                    "북촌 한옥마을은 혼잡도가 84% 낮고, 서촌 골목길도 33% 낮아요. " +
+                    "북촌 한옥마을까지는 4분, 이후 서촌 골목길까지는 추가로 12분이 소요돼요.",
+            ),
+            factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour })
+            .describedAs("순서를 맞게 쓴 설명을 위반으로 세면 안 된다")
+            .doesNotContain(Behaviour.REORDERED_COURSE)
+    }
+
+    @Test
+    fun `여러 문장에 걸친 순서 주장도 본다`() {
+        // 한 문장에 한 장소씩 나눠 써도 순서 주장은 순서 주장이다.
+        val violations = ForbiddenBehaviours.check(
+            explanation("첫 번째로 서촌 골목길에 갑니다. 그다음 경복궁으로 이동합니다."),
+            factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour }).contains(Behaviour.REORDERED_COURSE)
+    }
+
+    @Test
     fun `방문 순서의 목적을 틀리게 말하면 잡는다`() {
         // 실제 실행에서 나온 문장이다. 순서를 정하는 목적은 총 이동 시간 최소화이고
         // (course-generation-policy: "the order minimizes travel time and the clock
