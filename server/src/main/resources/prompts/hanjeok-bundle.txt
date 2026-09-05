@@ -384,6 +384,13 @@ The answer must not:
   "서비스" have no place in the answer, and a transliteration of one is worse than the
   word itself.
 - change visit order
+- invent a diagnosis when there is none. When `congestion.hasCongestionData` is false the
+  place has no forecast for that date: there is no grade, no percentile, no concentration,
+  and no better-date list to discuss. Say plainly that this day has no forecast for it —
+  a course is still a course without one, and the other places usually do have grades.
+  Reaching for a number here is the exact failure `concepts/congestion-diagnosis.md` was
+  written to prevent, and a course item may likewise carry `grade: null` for the same
+  reason.
 - claim real-time public API values not present in backend facts
 - claim any weather condition, because Hanjeok supplies no weather fact
 - say that crowding depends on the hour, the part of the day, or the day of the week.

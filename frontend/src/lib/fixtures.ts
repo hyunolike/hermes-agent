@@ -41,6 +41,7 @@ export const factsFixture: Facts = {
   summary: '혼자 가는 것보다 혼잡도가 34% 낮아요.',
   recommendedDate: { date: '2026-08-19', congestionReductionRate: 41 },
   congestion: {
+    hasCongestionData: true,
     concentration: 87.3,
     percentile: 92,
     grade: 'VERY_CROWDED',

@@ -14,6 +14,10 @@
  * `./gradlew demoReachability` 가 조용히 깨지지 않게 감시한다.
  */
 export type DemoKind =
+  /** 예보 커버리지가 없어 목적지 진단 자체가 없는 코스. */
+  | 'no-forecast'
+  /** 대안 3개가 다 붙어 네 정거장이 되는 코스. */
+  | 'four-stops'
   /** 목적지가 매우혼잡이고 대안이 붙은 코스. */
   | 'crowded-with-alternatives'
   /** 대안이 비어 있는 코스 — 점수가 떨어뜨린 게 아니라 후보가 애초에 없었다. */
@@ -41,12 +45,25 @@ export const DEMO_COURSES: DemoCourse[] = [
     label: '다른 날을 권하는 국립중앙박물관 코스',
     kind: 'better-date',
   },
+  {
+    // 목적지에 예보가 아예 없다. 등급도 백분위도 없는데 코스는 여전히 코스다 —
+    // 없는 진단을 지어내지 않는지가 여기서 드러난다. 서버가 이 분기를 다루기
+    // 전에는 이 코스가 503 이었다.
+    uuid: 'b0719488-c2c7-4256-bc83-e8b2cf5734cd',
+    label: '예보가 없는 경복궁 코스',
+    kind: 'no-forecast',
+  },
+  {
+    uuid: 'dfdb93f6-bfc3-478d-8a14-f9fde88e9c2a',
+    label: '네 곳을 도는 덕수궁 코스',
+    kind: 'four-stops',
+  },
 ]
 
 /** 세 종류가 다 있는가. 개수보다 이쪽이 데모의 조건이다. */
 export function missingKinds(courses: DemoCourse[] = DEMO_COURSES): DemoKind[] {
   const present = new Set(courses.map((course) => course.kind))
-  return (['crowded-with-alternatives', 'no-alternatives', 'better-date'] as const).filter(
-    (kind) => !present.has(kind),
-  )
+  return (
+    ['crowded-with-alternatives', 'no-alternatives', 'better-date', 'no-forecast', 'four-stops'] as const
+  ).filter((kind) => !present.has(kind))
 }

@@ -35,6 +35,19 @@ describe('코스 화면', () => {
     expect(order[1]).toContain('북촌 한옥마을')
   })
 
+  it('예보가 없는 장소는 등급 대신 그렇게 말한다', () => {
+    // 자리를 비우면 "등급이 뭐였더라"가 되고, 아무 색이나 넣으면 없는 진단을
+    // 있는 것처럼 만든다. 코스는 등급 없는 장소가 있어도 여전히 코스다.
+    const noForecast = {
+      ...factsFixture,
+      items: [{ ...factsFixture.items[0], grade: null }, factsFixture.items[1]],
+    }
+    render(<CourseView facts={noForecast} />)
+
+    expect(screen.getByText('예보 없음')).toBeInTheDocument()
+    expect(screen.getByText('경복궁')).toBeInTheDocument()
+  })
+
   it('대안이 비면 후보가 없었다고 말한다', () => {
     // "점수가 낮아 밀렸다"와 "후보가 애초에 없었다"는 다른 말이다.
     render(<CourseView facts={{ ...factsFixture, alternatives: [] }} />)

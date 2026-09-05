@@ -67,6 +67,38 @@ describe('에이전트 클라이언트', () => {
   })
 })
 
+describe('예보 커버리지가 없는 코스', () => {
+  it('진단 없는 사실을 받아들인다', async () => {
+    // 이 분기를 거부하면 멀쩡한 코스가 화면에서 통째로 사라진다. 실제로 서버가
+    // 이 분기를 다루기 전에는 그 코스가 503 이었다.
+    const noCoverage = {
+      ...factsFixture,
+      items: [{ ...factsFixture.items[0], grade: null }],
+      congestion: {
+        hasCongestionData: false as const,
+        message: '이 장소는 집중률 예측 데이터가 제공되지 않아요.',
+        betterDates: [],
+      },
+    }
+    const stub = vi.fn().mockResolvedValue(jsonResponse({ courseUuid: 'x', facts: noCoverage }))
+
+    const result = await fetchFacts('x', stub)
+
+    expect(result.kind).toBe('loaded')
+  })
+
+  it('진단이 있다면서 등급이 없으면 거부한다', async () => {
+    // 플래그와 내용이 어긋난 응답이다. 통과시키면 화면이 없는 등급을 읽는다.
+    const broken = {
+      ...factsFixture,
+      congestion: { hasCongestionData: true, message: 'x', betterDates: [] },
+    }
+    const stub = vi.fn().mockResolvedValue(jsonResponse({ courseUuid: 'x', facts: broken }))
+
+    await expect(fetchFacts('x', stub)).rejects.toThrow()
+  })
+})
+
 describe('서버가 아예 안 뜬 경우', () => {
   it('연결 거부를 예외가 아니라 값으로 돌려준다', async () => {
     // 첫 프로덕션 빌드가 여기서 죽었다 — 예외가 페이지까지 올라가면 백엔드가

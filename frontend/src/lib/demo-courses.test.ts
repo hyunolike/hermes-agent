@@ -6,7 +6,7 @@ describe('데모 코스', () => {
     // 개수가 아니라 종류가 기준이다. 셋은 각각 번들의 다른 문서를 인용하게 되므로,
     // 인용 검증이 실제로 작동하는지가 데모에서 드러난다.
     expect(missingKinds()).toEqual([])
-    expect(DEMO_COURSES).toHaveLength(3)
+    expect(DEMO_COURSES).toHaveLength(5)
   })
 
   it('uuid 가 서로 다르다', () => {
@@ -15,12 +15,14 @@ describe('데모 코스', () => {
   })
 
   it('빠진 종류를 센다', () => {
-    expect(missingKinds([])).toHaveLength(3)
+    expect(missingKinds([])).toHaveLength(5)
     expect(
       missingKinds([
         { uuid: 'a', label: 'a', kind: 'crowded-with-alternatives' },
         { uuid: 'b', label: 'b', kind: 'no-alternatives' },
         { uuid: 'c', label: 'c', kind: 'better-date' },
+        { uuid: 'd', label: 'd', kind: 'no-forecast' },
+        { uuid: 'e', label: 'e', kind: 'four-stops' },
       ]),
     ).toEqual([])
   })
@@ -34,6 +36,6 @@ describe('데모 코스', () => {
       kind: 'better-date' as const,
     }))
 
-    expect(missingKinds(sameKind)).toHaveLength(2)
+    expect(missingKinds(sameKind)).toHaveLength(4)
   })
 })

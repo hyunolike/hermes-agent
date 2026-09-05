@@ -44,7 +44,14 @@ object FactsProjection {
      * @param congestion 혼잡도 응답의 `data`
      */
     fun assemble(course: JsonNode, alternatives: JsonNode, congestion: JsonNode): ObjectNode {
-        val diagnosis = congestion.get("diagnosis") ?: error("congestion response has no diagnosis")
+        // 예보 커버리지가 없으면 `diagnosis` 자체가 없고 HTTP 는 200 이다. 이건
+        // 실패가 아니라 제품 상태다(concepts/congestion-diagnosis.md). 예외로 다루면
+        // 멀쩡한 코스가 백엔드 장애로 503 이 되어 돌아간다 — 실제로 그랬다.
+        //
+        // 없는 값은 **자리를 비운다.** 0 이나 빈 문자열을 채우면 모델이 그것을 값으로
+        // 읽고 "백분위 0" 같은 문장을 쓴다. 대신 hasCongestionData 를 양쪽 분기에
+        // 모두 실어, 모델이 부재를 해석하지 않고 플래그를 읽게 한다.
+        val diagnosis = congestion.get("diagnosis")
 
         val items = MAPPER.createArrayNode()
         (course.get("items") ?: error("course response has no items"))
@@ -53,7 +60,17 @@ object FactsProjection {
         val alternativeNodes = MAPPER.createArrayNode()
         alternatives.forEach { alternativeNodes.add(project(it, ALTERNATIVE_FIELDS)) }
 
-        val congestionNode = project(diagnosis, DIAGNOSIS_FIELDS)
+        val congestionNode = if (diagnosis == null || diagnosis.isNull) {
+            MAPPER.createObjectNode().apply {
+                put("hasCongestionData", false)
+                put(
+                    "message",
+                    congestion.path("message").asText("이 장소는 집중률 예측 데이터가 제공되지 않아요."),
+                )
+            }
+        } else {
+            project(diagnosis, DIAGNOSIS_FIELDS).apply { put("hasCongestionData", true) }
+        }
         congestionNode.set<JsonNode>("betterDates", congestion.get("betterDates") ?: MAPPER.createArrayNode())
 
         val facts = MAPPER.createObjectNode()

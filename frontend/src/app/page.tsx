@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { DEMO_COURSES, missingKinds } from '@/lib/demo-courses'
+import { OpenAnyCourse } from './OpenAnyCourse'
 
 export default function Home() {
   const missing = missingKinds()
@@ -37,6 +38,14 @@ export default function Home() {
           ))}
         </ul>
       )}
+
+      <section className="space-y-3 border-t border-black/10 pt-6 dark:border-white/10">
+        <OpenAnyCourse />
+        <p className="text-xs opacity-60">
+          위 목록은 종류별로 고른 예시입니다. 서버는 데모 uuid를 특별 취급하지 않으므로 한적에
+          있는 코스라면 어느 것이든 열립니다.
+        </p>
+      </section>
     </div>
   )
 }

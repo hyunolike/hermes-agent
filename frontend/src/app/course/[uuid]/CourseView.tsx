@@ -28,11 +28,19 @@ export function CourseView({ facts }: { facts: Facts }) {
             <div className="flex flex-wrap items-baseline gap-2">
               <span className="text-xs opacity-50">{item.visitOrder}</span>
               <span className="font-medium">{item.name}</span>
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs ring-1 ${GRADE_STYLE[item.grade]}`}
-              >
-                {GRADE_LABEL[item.grade]}
-              </span>
+              {/* 예보가 없는 장소는 등급이 없다. 자리를 비우면 "등급이 뭐였더라"가
+                  되고, 아무 색이나 넣으면 없는 진단을 있는 것처럼 만든다. */}
+              {item.grade === null ? (
+                <span className="rounded-full px-2 py-0.5 text-xs opacity-60 ring-1 ring-current">
+                  예보 없음
+                </span>
+              ) : (
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs ring-1 ${GRADE_STYLE[item.grade]}`}
+                >
+                  {GRADE_LABEL[item.grade]}
+                </span>
+              )}
               <span className="text-xs opacity-60">{item.timeLabel}</span>
               {item.travelMinutesFromPrev !== null && (
                 <span className="text-xs opacity-60">이동 {item.travelMinutesFromPrev}분</span>

@@ -17,7 +17,9 @@ export const courseItemSchema = z.object({
   name: z.string(),
   visitOrder: z.number(),
   timeLabel: z.string(),
-  grade: gradeSchema,
+  // 예보 커버리지가 없는 장소는 등급이 없다. null 을 거부하면 그 코스 전체가
+  // 화면에서 사라진다 — 없는 것은 결함이 아니라 제품 상태다.
+  grade: gradeSchema.nullable(),
   reason: z.string(),
   // 첫 방문지는 이전 장소가 없다.
   travelMinutesFromPrev: z.number().nullable(),
@@ -35,15 +37,30 @@ export const alternativeSchema = z.object({
   travelMinutes: z.number(),
 })
 
-export const congestionSchema = z.object({
-  concentration: z.number(),
-  percentile: z.number(),
-  grade: gradeSchema,
-  message: z.string(),
-  betterDates: z.array(
-    z.object({ date: z.string(), concentration: z.number(), grade: gradeSchema }),
-  ),
-})
+const betterDatesSchema = z.array(
+  z.object({ date: z.string(), concentration: z.number(), grade: gradeSchema }),
+)
+
+/**
+ * 진단이 있는 경우와 없는 경우를 **플래그로** 가른다. 필드의 부재로 가르면 화면이
+ * 부재를 해석해야 하고, 부재는 해석하기 나쁜 신호다 — 서버도 같은 이유로
+ * `hasCongestionData` 를 양쪽에 싣는다.
+ */
+export const congestionSchema = z.discriminatedUnion('hasCongestionData', [
+  z.object({
+    hasCongestionData: z.literal(true),
+    concentration: z.number(),
+    percentile: z.number(),
+    grade: gradeSchema,
+    message: z.string(),
+    betterDates: betterDatesSchema,
+  }),
+  z.object({
+    hasCongestionData: z.literal(false),
+    message: z.string(),
+    betterDates: betterDatesSchema,
+  }),
+])
 
 export const factsSchema = z.object({
   items: z.array(courseItemSchema),
