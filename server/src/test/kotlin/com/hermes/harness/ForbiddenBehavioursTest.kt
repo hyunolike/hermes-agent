@@ -31,6 +31,88 @@ class ForbiddenBehavioursTest {
     }
 
     @Test
+    fun `방문 순서의 목적을 틀리게 말하면 잡는다`() {
+        // 실제 실행에서 나온 문장이다. 순서를 정하는 목적은 총 이동 시간 최소화이고
+        // (course-generation-policy: "the order minimizes travel time and the clock
+        // follows from it"), 여유 시간은 백엔드가 계산한 적도 없는 값이다.
+        // 규칙 일곱 종 중 어느 것도 이걸 보지 못했다.
+        val violations = ForbiddenBehaviours.check(
+            explanation("방문 순서는 여유 시간을 최대화하기 위해 최적의 경로로 배치되었습니다."),
+            factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour }).contains(Behaviour.MISSTATED_ORDER_REASON)
+    }
+
+    @Test
+    fun `이동 시간 최소화라고 말하면 잡지 않는다`() {
+        // 정책이 실제로 말하는 그것이다. 이 문장까지 잡으면 규칙이 옳은 설명을 막는다.
+        val violations = ForbiddenBehaviours.check(
+            explanation("코스의 순서는 총 이동 시간을 최소화하기 위해 정해졌습니다."),
+            factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour }).doesNotContain(Behaviour.MISSTATED_ORDER_REASON)
+    }
+
+    @Test
+    fun `이동 시간 기준 최적화도 잡지 않는다`() {
+        // "최소화"라는 낱말만 허용하면 같은 뜻의 다른 표현이 오탐이 된다.
+        val violations = ForbiddenBehaviours.check(
+            explanation("해당 장소의 순서는 이동 시간을 기준으로 최적화되었습니다."),
+            factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour }).doesNotContain(Behaviour.MISSTATED_ORDER_REASON)
+    }
+
+    @Test
+    fun `목적을 말하지 않는 순서 문장은 잡지 않는다`() {
+        // 순서를 그냥 서술하는 문장까지 잡으면, 사실만 말한 설명이 위반으로 센다.
+        val violations = ForbiddenBehaviours.check(
+            explanation("방문 순서는 경복궁, 북촌 한옥마을 순입니다."),
+            factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour }).doesNotContain(Behaviour.MISSTATED_ORDER_REASON)
+    }
+
+    @Test
+    fun `목적어 없이 최대화만 말해도 잡는다`() {
+        // "위해" 같은 표지 없이 목적을 주장하는 형태다.
+        val violations = ForbiddenBehaviours.check(
+            explanation("이 동선은 관람 시간을 최대화합니다."),
+            factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour }).contains(Behaviour.MISSTATED_ORDER_REASON)
+    }
+
+    @Test
+    fun `순서 이야기가 아니면 그 낱말이 있어도 잡지 않는다`() {
+        // 규칙이 보는 것은 "순서를 왜 그렇게 정했는가"에 대한 주장이다. 같은 낱말이
+        // 다른 맥락에 나오는 것까지 잡으면, 어휘 하나가 문장 전체를 위반으로 만든다.
+        val violations = ForbiddenBehaviours.check(
+            explanation("서촌 골목길은 한산해서 관람 시간을 넉넉히 잡을 수 있어요."),
+            factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour }).doesNotContain(Behaviour.MISSTATED_ORDER_REASON)
+    }
+
+    @Test
+    fun `혼잡도를 순서의 이유로 들면 잡는다`() {
+        // 순서는 혼잡도로 정해지지 않는다 — 목적지는 고정이고 나머지는 이동 시간으로
+        // 정렬된다. 혼잡도를 순서의 이유로 대는 것은 백엔드가 하지 않은 계산이다.
+        val violations = ForbiddenBehaviours.check(
+            explanation("덜 붐비는 곳을 먼저 가도록 순서를 정했습니다."),
+            factsJson, bundle,
+        )
+
+        assertThat(violations.map { it.behaviour }).contains(Behaviour.MISSTATED_ORDER_REASON)
+    }
+
+    @Test
     fun `영문 등급 enum 이 본문에 새어 나오면 잡는다`() {
         // 이 질문을 처음에는 LLM 판정에 맡겼다. 판정자가 올바른 표기("보통")를 두고
         // "'NORMAL' 로 써야 한다"고 방향을 뒤집어 지적하는 일이 3회 실행에서 7건

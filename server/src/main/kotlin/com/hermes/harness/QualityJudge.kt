@@ -5,12 +5,12 @@ import com.hermes.context.Bundle
 import com.hermes.llm.Explanation
 
 /**
- * 판정이 물을 수 있는 것. 일곱 규칙 검사가 결정론적으로 잡는 것은 **여기 없다** —
+ * 판정이 물을 수 있는 것. 여덟 규칙 검사가 결정론적으로 잡는 것은 **여기 없다** —
  * 같은 사실을 두 곳에서 물으면 서로 다른 답이 나올 수 있고, 그러면 어느 쪽을
  * 믿어야 할지가 새 문제가 된다.
  *
  * 처음에는 네 가지를 물었다. 측정이 셋을 걸러 냈다. 남은 하나가 규칙이 못 보는
- * 실제 결함을 찾는다 — "붐비는 날으로", "congestion 진단 결과" 는 일곱 규칙을
+ * 실제 결함을 찾는다 — "붐비는 날으로", "congestion 진단 결과" 는 여덟 규칙을
  * 전부 통과했다.
  * - 등급 표기는 틀린 어휘가 유한해 문자열로 결정되므로 규칙으로 내렸다
  *   (`Behaviour.GRADE_MISLABEL`). 판정에 맡겼을 때 판정자는 올바른 표기("보통")를
@@ -132,7 +132,7 @@ class QualityJudge(private val provider: JudgeProvider) {
         private val MAPPER = ObjectMapper()
 
         /**
-         * 일곱 규칙 검사가 보는 것은 여기서 묻지 않는다. 지적할 게 없으면 빈 배열을
+         * 여덟 규칙 검사가 보는 것은 여기서 묻지 않는다. 지적할 게 없으면 빈 배열을
          * 내라고 명시한다 — 판정자가 무언가는 찾아야 한다고 느끼면 없는 문제를 만든다.
          */
         private val INSTRUCTIONS = """

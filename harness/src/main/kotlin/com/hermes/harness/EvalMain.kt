@@ -21,7 +21,7 @@ import java.util.concurrent.Executors
 import kotlin.system.exitProcess
 
 /**
- * 금지 행동 7종을 센다. 실제 API 를 부르므로 돈이 든다.
+ * 금지 행동 8종을 센다. 실제 API 를 부르므로 돈이 든다.
  *
  * 서버를 띄우지 않는다 — presentation 을 건너뛰고 application 층을 직접 부르므로,
  * 여기서 통과한 프롬프트 조립과 인용 검증이 운영에서 도는 것과 같은 코드다.
@@ -125,7 +125,7 @@ fun main(args: Array<String>) {
                 println("[$i] explained — violations: ${violations.ifEmpty { "none" }}")
 
                 // 본문과 인용을 찍는다. 이 표의 0% 는 "위반이 없다"가 아니라 "이
-                // 일곱 검사가 보는 범위에서 안 걸렸다"는 뜻이고, 둘을 가르는 것은
+                // 여덟 검사가 보는 범위에서 안 걸렸다"는 뜻이고, 둘을 가르는 것은
                 // 결국 사람이 문장을 읽는 일이다. 검사들이 못 보는 것이 실제로
                 // 있다 — INVENTED_PLACE 는 궁/사/마을/골목길로 끝나는 이름만 보고,
                 // TIME_OF_DAY_REASON 은 문장을 넘는 인과를 놓치며,

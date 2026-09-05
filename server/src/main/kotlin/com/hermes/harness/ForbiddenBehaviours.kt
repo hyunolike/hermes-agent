@@ -12,6 +12,7 @@ enum class Behaviour {
     DEFERRED_DESTINATION,
     TIME_OF_DAY_REASON,
     GRADE_MISLABEL,
+    MISSTATED_ORDER_REASON,
 }
 
 data class Violation(val behaviour: Behaviour, val evidence: String)
@@ -37,6 +38,33 @@ object ForbiddenBehaviours {
     //
     // 두 가지만 본다. (1) 영문 enum 이 본문에 그대로 새어 나온 경우,
     // (2) 알려진 직역. 풀어 쓴 표현("매우 붐빈다", "한산하다")은 정상이므로 보지 않는다.
+    // 방문 순서의 목적을 틀리게 말하는 것. 정책은 하나만 인정한다 —
+    // "the order minimizes travel time and the clock follows from it"
+    // (concepts/course-generation-policy.md). 목적지는 고정이고, 나머지는 이동 시간이
+    // 가장 짧은 순열로 정렬된다.
+    //
+    // **옳은 표현을 열거하는 방식은 실패했다.** 처음에는 "순서의 목적을 주장하면서
+    // 이동 시간 최소화라고 말하지 않으면 위반"으로 짰는데, 한국어가 같은 뜻을 말하는
+    // 방식이 끝이 없어 실제 운영 문장에서 네 번 연속 오탐했다 — "가까운 거리를 이용해
+    // 순서를 최적화", "도달하는 데 걸리는 시간을 최소화하도록", "최단 이동 시간을
+    // 기준으로", 그리고 "목적지"의 "목적"을 목적 주장으로 오인한 것.
+    //
+    // 그래서 GRADE_MISLABEL 과 같은 모양으로 뒤집었다: **틀린 목적의 어휘는 유한하다.**
+    // 백엔드가 계산한 적 없는 목적을 순서의 이유로 대는 두 형태만 본다. 오탐은 값이
+    // 비싸다 — 늑대를 외치는 규칙은 아무것도 막지 못하면서 읽는 사람의 주의만 쓴다.
+    private val ORDER_TERMS = listOf("순서", "정렬", "배치", "동선", "경로")
+    private val ORDER_CLAIM_MARKERS =
+        listOf("위해", "하도록", "기준으로", "때문", "최소화", "최대화", "최적화", "먼저 가")
+
+    // (1) 백엔드가 계산하지 않는 시간을 목적으로 든다. 코스에 있는 시간 값은
+    // 이동 시간과 그로부터 파생된 timeLabel 뿐이다.
+    private val INVENTED_OBJECTIVES = listOf("여유 시간", "관람 시간", "대기 시간", "휴식 시간", "체류 시간")
+
+    // (2) 혼잡도를 순서의 기준으로 든다. 목적지는 고정이고 나머지는 이동 시간으로
+    // 정렬되므로, 덜 붐비는 곳을 먼저 가도록 정했다는 것은 하지 않은 계산이다.
+    private val CONGESTION_WORDS = listOf("혼잡", "붐비", "한산", "여유로운")
+    private val PRECEDENCE_WORDS = listOf("먼저", "우선", "낮은 순", "순으로")
+
     private val GRADE_ENUM_TOKENS = listOf("RELAXED", "NORMAL", "CROWDED", "VERY_CROWDED")
     private val GRADE_MISTRANSLATIONS = listOf("정상적인 혼잡", "정상 등급", "정상적인 등급", "노멀", "릴랙스", "크라우디드")
     private val CAUSAL_CONNECTORS = listOf("라서", "어서", "여서", "해서", "때문", "이라", "니까")
@@ -140,6 +168,22 @@ object ForbiddenBehaviours {
         (GRADE_ENUM_TOKENS.filter { text.contains(it) } + GRADE_MISTRANSLATIONS.filter { text.contains(it) })
             .distinct()
             .forEach { violations += Violation(Behaviour.GRADE_MISLABEL, it) }
+
+        // 순서의 목적을 주장하면서 **틀린 목적**을 대는 문장만 본다. 순서를 그냥
+        // 서술하는 문장("순서는 경복궁, 북촌 순입니다")도, 옳은 목적을 어떤 표현으로
+        // 말하든 건드리지 않는다.
+        sentences(text)
+            .firstOrNull { sentence ->
+                val claimsOrderPurpose = ORDER_TERMS.any { sentence.contains(it) } &&
+                    ORDER_CLAIM_MARKERS.any { sentence.contains(it) }
+                if (!claimsOrderPurpose) return@firstOrNull false
+
+                val inventedTime = INVENTED_OBJECTIVES.any { sentence.contains(it) }
+                val ordersByCongestion = CONGESTION_WORDS.any { sentence.contains(it) } &&
+                    PRECEDENCE_WORDS.any { sentence.contains(it) }
+                inventedTime || ordersByCongestion
+            }
+            ?.let { violations += Violation(Behaviour.MISSTATED_ORDER_REASON, it) }
 
         val unknownCitations = explanation.citations.filterNot { it in bundle.paths() }
         if (explanation.citations.isEmpty()) {
