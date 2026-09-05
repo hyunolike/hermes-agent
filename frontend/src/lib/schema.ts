@@ -91,6 +91,13 @@ export const explainResponseSchema = z.object({
   model: z.string(),
 })
 
+export const askResponseSchema = z.object({
+  answer: z.string(),
+  citations: z.array(z.string()),
+  generatedAt: z.string(),
+  model: z.string(),
+})
+
 export const contextEntrySchema = z.object({ path: z.string(), bytes: z.number() })
 export const contextListSchema = z.array(contextEntrySchema)
 
@@ -98,3 +105,4 @@ export type Facts = z.infer<typeof factsSchema>
 export type CourseItem = z.infer<typeof courseItemSchema>
 export type ExplainResponse = z.infer<typeof explainResponseSchema>
 export type ContextEntry = z.infer<typeof contextEntrySchema>
+export type AskResponse = z.infer<typeof askResponseSchema>

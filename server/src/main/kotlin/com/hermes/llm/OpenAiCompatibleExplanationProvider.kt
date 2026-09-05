@@ -45,9 +45,9 @@ class OpenAiCompatibleExplanationProvider(
 
     private val log = LoggerFactory.getLogger(OpenAiCompatibleExplanationProvider::class.java)
 
-    override fun explain(systemText: String, factsJson: String): ProviderResult = try {
+    override fun explain(systemText: String, userText: String): ProviderResult = try {
         val response = http.send(
-            buildRequest(endpoint, apiKey, systemText, factsJson, model),
+            buildRequest(endpoint, apiKey, systemText, userText, model),
             HttpResponse.BodyHandlers.ofString(),
         )
 
@@ -116,17 +116,17 @@ class OpenAiCompatibleExplanationProvider(
             endpoint: URI,
             apiKey: String,
             systemText: String,
-            factsJson: String,
+            userText: String,
             model: String,
         ): HttpRequest = HttpRequest.newBuilder()
             .uri(endpoint)
             .timeout(Duration.ofSeconds(60))
             .header("Authorization", "Bearer $apiKey")
             .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(buildBody(systemText, factsJson, model)))
+            .POST(HttpRequest.BodyPublishers.ofString(buildBody(systemText, userText, model)))
             .build()
 
-        fun buildBody(systemText: String, factsJson: String, model: String): String {
+        fun buildBody(systemText: String, userText: String, model: String): String {
             val schema = mapOf(
                 "type" to "object",
                 "additionalProperties" to false,
@@ -142,7 +142,7 @@ class OpenAiCompatibleExplanationProvider(
                     "model" to model,
                     "messages" to listOf(
                         linkedMapOf("role" to "system", "content" to systemText),
-                        linkedMapOf("role" to "user", "content" to factsJson),
+                        linkedMapOf("role" to "user", "content" to userText),
                     ),
                     "tools" to listOf(
                         linkedMapOf(

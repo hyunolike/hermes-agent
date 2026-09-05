@@ -6,6 +6,7 @@ import com.hermes.context.BundleLoader
 import com.hermes.context.CitationValidator
 import com.hermes.context.PromptAssembler
 import com.hermes.explain.CourseExplainer
+import com.hermes.explain.CourseQuestionService
 import com.hermes.explain.ExplanationCache
 import com.hermes.explain.ExplanationService
 import com.hermes.facts.FactsSource
@@ -99,6 +100,13 @@ class HermesConfig {
         citationValidator: CitationValidator,
         explanationProvider: ExplanationProvider,
     ): ExplanationService = ExplanationService(promptAssembler, citationValidator, explanationProvider)
+
+    @Bean
+    fun courseQuestionService(
+        promptAssembler: PromptAssembler,
+        citationValidator: CitationValidator,
+        explanationProvider: ExplanationProvider,
+    ): CourseQuestionService = CourseQuestionService(promptAssembler, citationValidator, explanationProvider)
 
     @Bean
     fun courseExplainer(

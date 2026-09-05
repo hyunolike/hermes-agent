@@ -28,5 +28,5 @@ data class Failed(val reason: String) : ProviderResult
 interface ExplanationProvider {
     val name: String
 
-    fun explain(systemText: String, factsJson: String): ProviderResult
+    fun explain(systemText: String, userText: String): ProviderResult
 }

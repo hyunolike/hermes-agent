@@ -60,6 +60,17 @@ class ApiErrorHandler : ResponseEntityExceptionHandler() {
     }
 
     /**
+     * 클라이언트가 만든 잘못된 요청. `@ResponseStatus(BAD_REQUEST)` 만으로는 부족하다 —
+     * 아래 캐치올이 먼저 잡아 503 으로 바꿔 버린다(실측). 503 은 "지금은 안 되니 다시
+     * 시도하라"는 뜻인데 빈 질문은 몇 번을 보내도 같은 이유로 실패한다.
+     */
+    @ExceptionHandler(InvalidAskRequestException::class)
+    fun onInvalidAsk(e: InvalidAskRequestException): ResponseEntity<Map<String, String>> {
+        log.warn("client request rejected: {}", e.message)
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(mapOf("code" to "INVALID_REQUEST"))
+    }
+
+    /**
      * 그 밖의 모든 예외 — 예를 들어 `ExplainController` 의 `mapper.readTree(...)`
      * 가 예상 못 한 입력에 걸려 던지는 버그. 위 두 핸들러(스프링 MVC 예외 계열,
      * `ExplanationUnavailableException`)에 안 걸리는, 진짜 예기치 못한 실패만

@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic'
 
 import { fetchFacts } from '@/lib/agent'
 import { CourseView } from './CourseView'
+import { AskBox } from './AskBox'
 import { ExplanationBlock } from './ExplanationBlock'
 
 /**
@@ -35,6 +36,7 @@ export default async function CoursePage({ params }: { params: Promise<{ uuid: s
     <div className="space-y-8">
       <CourseView facts={facts.value} />
       <ExplanationBlock courseUuid={uuid} />
+      <AskBox courseUuid={uuid} />
     </div>
   )
 }

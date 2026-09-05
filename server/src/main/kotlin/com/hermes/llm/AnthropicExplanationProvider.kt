@@ -16,8 +16,8 @@ class AnthropicExplanationProvider(private val client: AnthropicClient) : Explan
 
     override val name = "anthropic"
 
-    override fun explain(systemText: String, factsJson: String): ProviderResult = try {
-        val response = client.messages().create(buildParams(systemText, factsJson))
+    override fun explain(systemText: String, userText: String): ProviderResult = try {
+        val response = client.messages().create(buildParams(systemText, userText))
 
         // refusal 을 content 읽기 전에 가른다. 거절은 HTTP 200 에 빈 content 로
         // 오므로, content[0] 을 무조건 읽는 코드는 여기서 깨진다.
@@ -59,7 +59,7 @@ class AnthropicExplanationProvider(private val client: AnthropicClient) : Explan
         // 부를 수 없다(컴파일 에러로 확인함) — 그래서 공개 경로인
         // `.outputConfig(Class)` 를 최소 요청 한 번에 태워 유도된 포맷만 꺼내 쓴다.
         // Explanation 타입은 고정이므로 이 값은 요청마다 달라지지 않는다 — buildParams
-        // 는 여전히 systemText/factsJson 두 인자만의 순수 함수다.
+        // 는 여전히 systemText/userText 두 인자만의 순수 함수다.
         private val derivedExplanationFormat: JsonOutputFormat by lazy {
             MessageCreateParams.builder()
                 .model(MODEL)
@@ -74,7 +74,7 @@ class AnthropicExplanationProvider(private val client: AnthropicClient) : Explan
                 .orElseThrow()
         }
 
-        fun buildParams(systemText: String, factsJson: String): StructuredMessageCreateParams<Explanation> =
+        fun buildParams(systemText: String, userText: String): StructuredMessageCreateParams<Explanation> =
             MessageCreateParams.builder()
                 .model(MODEL)
                 .maxTokens(MAX_TOKENS)
@@ -92,7 +92,7 @@ class AnthropicExplanationProvider(private val client: AnthropicClient) : Explan
                             .build(),
                     ),
                 )
-                .addUserMessage(factsJson)
+                .addUserMessage(userText)
                 // outputConfig(Class) 를 먼저 부른다 — StructuredMessageCreateParams<T> 의
                 // outputType 을 채우는 유일한 경로다. 하지만 이 오버로드는 내부적으로
                 // OutputConfig{format=...} (effort 없음) 을 새로 만들어
