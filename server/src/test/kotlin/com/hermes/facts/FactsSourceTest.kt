@@ -140,6 +140,22 @@ class FactsSourceTest {
     }
 
     @Test
+    fun `예보 커버리지가 없는 응답은 실패가 아니다`() {
+        // 커버리지 없음은 제품 상태다(concepts/congestion-diagnosis.md). 실패로 다루면
+        // 멀쩡한 코스가 503 이 되어 돌아간다 — 실제로 운영에서 그랬다.
+        val client = object : FakeClient() {
+            override fun congestion(attractionId: Long, date: String): JsonNode =
+                mapper.readTree(
+                    """{"hasCongestionData":false,"message":"예측 데이터가 제공되지 않아요.","nearbyDiagnosable":[]}""",
+                )
+        }
+
+        val facts = FactsSource(client, 15, executor).fetch("abc")
+
+        assertThat(mapper.readTree(facts.json).at("/congestion/hasCongestionData").asBoolean()).isFalse()
+    }
+
+    @Test
     fun `한적 응답에 기대한 필드가 없으면 FactsProjection의 실패가 HanjeokUnavailableException으로 바뀐다`() {
         // FactsProjection.assemble 은 필드가 빠지면 error(...) 를 던져
         // IllegalStateException 이 나온다. 그 예외가 그대로 새어나가면 웹
@@ -147,8 +163,11 @@ class FactsSourceTest {
         // 타입의 실패로 바꿔야 한다.
         val client = object : FakeClient() {
             override fun congestion(attractionId: Long, date: String): JsonNode =
-                // diagnosis 자체가 없는 기형 응답.
-                mapper.readTree("""{"betterDates":[]}""")
+                // diagnosis 는 있는데 안이 비어 있는 기형 응답. **diagnosis 자체가
+                // 없는 것은 이제 기형이 아니다** — 예보 커버리지가 없는 정상 상태이고
+                // FactsProjection 이 그 분기를 따로 다룬다. 이 테스트가 지키려는 것은
+                // "진짜 기형 응답이 처리되지 않은 500 으로 새어나가지 않는다" 쪽이다.
+                mapper.readTree("""{"diagnosis":{"concentration":1.0},"betterDates":[]}""")
         }
 
         assertThatThrownBy { FactsSource(client, 15, executor).fetch("abc") }
