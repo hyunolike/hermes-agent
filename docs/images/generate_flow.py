@@ -111,7 +111,8 @@ class Node:
         return "".join(out)
 
 
-def arrow(pts, color="#6F665E", w=2.6, head=12, label=None, label_at=None, label_dx=0):
+def arrow(pts, color="#6F665E", w=2.6, head=12, label=None, label_at=None, label_dx=0,
+          dash=None):
     """꺾인 화살표. pts 는 [(x, y), ...] — 마지막 두 점이 화살촉 방향을 정한다."""
     d = f"M{pts[0][0]} {pts[0][1]}" + "".join(f" L{x} {y}" for x, y in pts[1:])
     (x0, y0), (x1, y1) = pts[-2], pts[-1]
@@ -121,8 +122,9 @@ def arrow(pts, color="#6F665E", w=2.6, head=12, label=None, label_at=None, label
         f"M{x1} {y1} L{x1 - head * math.cos(ang - s):.1f} {y1 - head * math.sin(ang - s):.1f}"
         for s in (0.42, -0.42)
     )
+    dashes = f' stroke-dasharray="{dash}"' if dash else ""
     out = sketch(f'<path d="{d}" fill="none" stroke="{color}" stroke-width="{w}" '
-                 f'stroke-linecap="round" stroke-linejoin="round"/>'
+                 f'stroke-linecap="round" stroke-linejoin="round"{dashes}/>'
                  f'<path d="{wings}" fill="none" stroke="{color}" stroke-width="{w}" '
                  f'stroke-linecap="round"/>')
     if label:

@@ -3,3 +3,6 @@ build/
 .DS_Store
 *.log
 .env
+
+# 그림 생성 스크립트(docs/images)를 돌리면 생긴다
+__pycache__/

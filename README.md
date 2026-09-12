@@ -132,7 +132,7 @@
 | <img src="docs/images/stack/nextjs.svg" width="24" alt=""> <img src="docs/images/stack/react.svg" width="24" alt=""> <img src="docs/images/stack/typescript.svg" width="24" alt=""> <img src="docs/images/stack/tailwind.svg" width="24" alt=""> 화면 | Next.js 16, React 19, TypeScript 5, Tailwind CSS 4 |
 | <img src="docs/images/stack/docker.svg" width="24" alt=""> <img src="docs/images/stack/cloud-run.svg" width="24" alt=""> <img src="docs/images/stack/vercel.svg" width="24" alt=""> 배포 | 서버는 Docker 이미지로 Cloud Run, 화면은 Vercel ([`docs/deploy.md`](./docs/deploy.md)) |
 
-> 위 로고는 외부에서 가져온 이미지가 아니라 이 저장소가 직접 그린 SVG 입니다(`docs/images/`). 선을 흔드는 필터를 얹어 손그림처럼 보이게 했고, 배경에 종이색 카드를 깔아 깃허브 라이트·다크 어느 테마에서도 읽힙니다. 위 흐름도(`flow.svg`)도 같은 방식입니다. 고칠 일이 생기면 `python3 docs/images/generate.py`, `python3 docs/images/generate_flow.py` 로 다시 만듭니다.
+> 위 로고는 외부에서 가져온 이미지가 아니라 이 저장소가 직접 그린 SVG 입니다(`docs/images/`). 선을 흔드는 필터를 얹어 손그림처럼 보이게 했고, 배경에 종이색 카드를 깔아 깃허브 라이트·다크 어느 테마에서도 읽힙니다. 위 흐름도(`flow.svg`)도 같은 방식입니다. 고칠 일이 생기면 `generate.py` · `generate_flow.py` · `generate_deploy.py` 를 다시 돌립니다(`python3 docs/images/<이름>`).
 
 <br/>
 
@@ -303,6 +303,24 @@ hermes-agent
 ```
 
 > 판정기(`ForbiddenBehaviours`)와 정규화(`FactsNormalizer`)가 `harness`가 아니라 `server` 의 main 소스셋에 있는 이유: `EvalMain`은 단위 테스트가 닿지 않는 곳에 있는데, 이 두 로직이야말로 가장 위험합니다. 판정기와 프로바이더가 서로 다른 facts 모양을 보면 검사 전체가 조용히 무력해집니다. 테스트가 닿는 곳에 둬야 실수로 깨졌을 때 잡힙니다.
+
+<br/>
+
+## 🗺 배포 구성
+
+<div align="center">
+
+<img src="docs/images/deploy.svg" alt="배포 구성도 — 브라우저가 Vercel 의 Next.js 화면을 열고, 화면은 Cloud Run 의 hermes-agent 서버(presentation · explain · context · llm)를 부른다. 서버는 한적 백엔드를 요청당 3회, LLM 프로바이더를 1회 부르고, 키는 Secret Manager 에서 환경 변수로 주입된다. 근거 번들은 GitHub Actions 가 위키에서 다시 만들어 표류를 검사한 뒤 이미지에 구워 배포한다. 평가 하네스는 배포 경로 밖에 있다." width="900">
+
+</div>
+
+서버는 Cloud Run, 화면은 Vercel. 상태도 DB도 없어 **0으로 스케일다운됩니다.** 그림에서 읽을 것 셋:
+
+- **근거는 이미지에 고정됩니다.** CI 가 위키에서 번들을 다시 만들어 커밋된 것과 다르면 빌드를 실패시키고, 통과한 번들만 이미지에 구워집니다. 런타임에 위키를 clone 하면 위키가 잠깐 안 될 때 서버가 못 뜨고, 같은 이미지가 날마다 다른 근거로 답하게 됩니다.
+- **브라우저가 보는 주소는 Cloud Run 하나뿐입니다.** 한적 주소도 API 키도 화면으로 내려가지 않습니다 — 두 호출 다 서버-서버이고, 키는 Secret Manager 에서 환경 변수로 들어옵니다.
+- **평가 하네스는 이 경로 위에 없습니다.** `harness` 소스셋은 운영 이미지에 들어가지 않고, `./gradlew eval` 은 서버를 띄우지 않고 같은 application 층을 직접 부릅니다.
+
+배포 절차와 실제 배포된 값(주소 · 리전 · 시크릿 이름 · 데모 코스)은 [`docs/deploy.md`](./docs/deploy.md) 에 있습니다.
 
 <br/>
 
