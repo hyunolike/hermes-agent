@@ -15,6 +15,8 @@
 ![Gradle](https://img.shields.io/badge/Gradle-Kotlin%20DSL-02303A?logo=gradle&logoColor=white)
 ![Anthropic](https://img.shields.io/badge/Anthropic-Java%20SDK%202.34.0-D97757?logo=anthropic&logoColor=white)
 
+<img src="docs/images/stack/kotlin.svg" alt="Kotlin" width="46"> <img src="docs/images/stack/spring-boot.svg" alt="Spring Boot" width="46"> <img src="docs/images/stack/gradle.svg" alt="Gradle" width="46"> <img src="docs/images/stack/anthropic.svg" alt="Anthropic" width="46"> <img src="docs/images/stack/nextjs.svg" alt="Next.js" width="46"> <img src="docs/images/stack/docker.svg" alt="Docker" width="46">
+
 **한국어** · [English](./README.en.md)
 
 </div>
@@ -132,14 +134,24 @@ flowchart TD
 
 ## 🛠 기술 스택
 
+<div align="center">
+
+<img src="docs/images/tech-stack.svg" alt="hermes-agent 기술 스택 — 손으로 그린 로고 모음" width="740">
+
+</div>
+
 | 구분 | 사용 기술 |
 | --- | --- |
-| 언어 · 런타임 | Kotlin 2.2.21, JVM Toolchain 21 |
-| 프레임워크 | Spring Boot 4.1.0 |
-| 빌드 | Gradle (Kotlin DSL), 단일 모듈 + 분리된 `harness` 소스셋 |
-| LLM | Anthropic Java SDK 2.34.0 (`claude-opus-5`), OpenRouter Chat Completions (`java.net.http.HttpClient`) |
+| <img src="docs/images/stack/kotlin.svg" width="24" alt=""> <img src="docs/images/stack/java.svg" width="24" alt=""> 언어 · 런타임 | Kotlin 2.2.21, JVM Toolchain 21 |
+| <img src="docs/images/stack/spring-boot.svg" width="24" alt=""> 프레임워크 | Spring Boot 4.1.0, Spring Modulith 2.1.0 |
+| <img src="docs/images/stack/gradle.svg" width="24" alt=""> 빌드 | Gradle (Kotlin DSL), 단일 모듈 + 분리된 `harness` 소스셋 |
+| <img src="docs/images/stack/anthropic.svg" width="24" alt=""> <img src="docs/images/stack/openai.svg" width="24" alt=""> LLM | Anthropic Java SDK 2.34.0 (`claude-opus-5`), OpenAI · OpenRouter Chat Completions (`java.net.http.HttpClient`) |
 | 직렬화 | Jackson (`jackson-module-kotlin`) |
-| 테스트 | JUnit 5 (`spring-boot-starter-test`) |
+| <img src="docs/images/stack/junit.svg" width="24" alt=""> 테스트 | JUnit 5 (`spring-boot-starter-test`), 프론트엔드는 Vitest + Testing Library |
+| <img src="docs/images/stack/nextjs.svg" width="24" alt=""> <img src="docs/images/stack/react.svg" width="24" alt=""> <img src="docs/images/stack/typescript.svg" width="24" alt=""> <img src="docs/images/stack/tailwind.svg" width="24" alt=""> 화면 | Next.js 16, React 19, TypeScript 5, Tailwind CSS 4 |
+| <img src="docs/images/stack/docker.svg" width="24" alt=""> <img src="docs/images/stack/cloud-run.svg" width="24" alt=""> <img src="docs/images/stack/vercel.svg" width="24" alt=""> 배포 | 서버는 Docker 이미지로 Cloud Run, 화면은 Vercel ([`docs/deploy.md`](./docs/deploy.md)) |
+
+> 위 로고는 외부에서 가져온 이미지가 아니라 이 저장소가 직접 그린 SVG 입니다(`docs/images/`). 선을 흔드는 필터를 얹어 손그림처럼 보이게 했고, 배경에 종이색 카드를 깔아 깃허브 라이트·다크 어느 테마에서도 읽힙니다. 고칠 일이 생기면 `python3 docs/images/generate.py` 로 다시 만듭니다.
 
 <br/>
 
@@ -213,7 +225,7 @@ violations  : rate = runs-with-violation / explained (NOT /runs); occurrences = 
 숫자 두 개가 분모를 공유하지 않는다는 점이 중요합니다.
 
 - **`rate`의 분모는 `runs`가 아니라 `explained`입니다.** `Refused`·`Failed`·인용 무효로 끝난 실행에는 점검할 설명 텍스트 자체가 없습니다. 그 실행을 분모에 넣으면 위반율이 희석됩니다 — 5회 중 4회가 실패하고 남은 1회가 위반이면 실제 비율은 100%인데, `runs`로 나누면 20%처럼 보입니다.
-- **`occurrences`는 원시 발생 횟수입니다.** `INVENTED_PLACE`는 한 실행에서 지어낸 이름을 여러 개 낼 수 있어 이 값이 실행 수를 넘을 수 있습니다. 나머지 다섯은 실행당 최대 1건입니다.
+- **`occurrences`는 원시 발생 횟수입니다.** `INVENTED_PLACE`는 한 실행에서 지어낸 이름을 여러 개 낼 수 있어 이 값이 실행 수를 넘을 수 있습니다. 나머지 일곱은 실행당 최대 1건입니다.
 - **`explained == 0`이면 `rate`는 `0.0%`가 아니라 `UNMEASURED`로 찍히고, 프로세스는 종료 코드 1로 끝납니다.** "위반 없음"과 "잴 수 없음"이 같은 숫자로 보이면, 판정기가 다 실패한 실행을 무결점 실행으로 오독하게 됩니다.
 
 <br/>
@@ -298,9 +310,15 @@ hermes-agent
 ├── server/src/main/resources/prompts/hanjeok-bundle.txt   # 근거 번들 (문서 9개)
 ├── server/src/test/kotlin                                 # 단위 테스트 (무료 · 결정론적)
 │
-└── harness/
-    ├── src/main/kotlin/.../EvalMain.kt   # 평가 진입점 (유료 · 비결정적)
-    └── fixtures/course-explanation-request.json
+├── harness/
+│   ├── src/main/kotlin/.../EvalMain.kt   # 평가 진입점 (유료 · 비결정적)
+│   └── fixtures/course-explanation-request.json
+│
+├── frontend/                                              # Next.js 16 · React 19 · Tailwind 4
+│
+└── docs/
+    ├── deploy.md                 # Cloud Run · Vercel 배포 절차 (사람이 실행한다)
+    └── images/                   # README 로고 SVG + 이를 만든 generate.py
 ```
 
 > 판정기(`ForbiddenBehaviours`)와 정규화(`FactsNormalizer`)가 `harness`가 아니라 `server` 의 main 소스셋에 있는 이유: `EvalMain`은 단위 테스트가 닿지 않는 곳에 있는데, 이 두 로직이야말로 가장 위험합니다. 판정기와 프로바이더가 서로 다른 facts 모양을 보면 검사 전체가 조용히 무력해집니다. 테스트가 닿는 곳에 둬야 실수로 깨졌을 때 잡힙니다.
