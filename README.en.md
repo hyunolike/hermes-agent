@@ -73,32 +73,13 @@ The server picks from the same three names (`HERMES_LLM_PROVIDER`). For a while 
 
 ## 🔀 Explanation Request Flow
 
-```mermaid
-flowchart TD
-    A["3 of 4 backend responses<br/>(course · congestion · alternatives)"] --> B["FactsNormalizer<br/>flattened into one facts object"]
-    B --> C["BackendFacts(courseUuid, json)"]
+<div align="center">
 
-    D["hanjeok-bundle.txt<br/>9 documents"] --> E["BundleLoader<br/>parse FILE markers · reject forged ones"]
-    E --> F["PromptAssembler<br/>systemText = bundle, verbatim"]
+<img src="docs/images/flow.en.svg" alt="Explanation request flow — three backend responses pass through FactsNormalizer into BackendFacts, while hanjeok-bundle.txt passes through BundleLoader and PromptAssembler into systemText; both meet in ExplanationService.explain(). A ProviderResult that is Refused or Failed becomes Unavailable, one that is Answered goes to CitationValidator, and valid citations make it Explained, which ForbiddenBehaviours.check() judges. Both branches end in ViolationTally." width="900">
 
-    C --> G["ExplanationService.explain()"]
-    F --> G
+</div>
 
-    G --> H{"ExplanationProvider"}
-    H -->|"Anthropic<br/>1h cache + structured output"| I["ProviderResult"]
-    H -->|"OpenRouter<br/>schema forced via tool_choice"| I
-
-    I -->|Refused| X["Unavailable(reason)"]
-    I -->|Failed| X
-    I -->|Answered| J{"CitationValidator<br/>does the path exist in the bundle?"}
-
-    J -->|Invalid| X
-    J -->|Valid| K["Explained(text + citations)"]
-
-    K --> L["ForbiddenBehaviours.check()<br/>judge the eight behaviours"]
-    X --> M["ViolationTally<br/>runs-with-violation / raw occurrences"]
-    L --> M
-```
+`3 backend responses → FactsNormalizer → BackendFacts` and `hanjeok-bundle.txt → BundleLoader → PromptAssembler` meet in `ExplanationService.explain()`, pass through `ExplanationProvider → ProviderResult → CitationValidator`, split into `Explained` or `Unavailable`, and end up in `ForbiddenBehaviours.check()` · `ViolationTally`.
 
 `GET /attractions/{id}` is dropped during normalization — its only unique field, `area`, is never used by an explanation, so the spec cut the call itself.
 
@@ -151,7 +132,7 @@ Each one is a claim the policy documents (`decisions/keep-llm-out-of-ranking.md`
 | <img src="docs/images/stack/nextjs.svg" width="24" alt=""> <img src="docs/images/stack/react.svg" width="24" alt=""> <img src="docs/images/stack/typescript.svg" width="24" alt=""> <img src="docs/images/stack/tailwind.svg" width="24" alt=""> UI | Next.js 16, React 19, TypeScript 5, Tailwind CSS 4 |
 | <img src="docs/images/stack/docker.svg" width="24" alt=""> <img src="docs/images/stack/cloud-run.svg" width="24" alt=""> <img src="docs/images/stack/vercel.svg" width="24" alt=""> Deployment | The server ships as a Docker image on Cloud Run, the UI on Vercel ([`docs/deploy.md`](./docs/deploy.md)) |
 
-> Those logos are not fetched from anywhere — this repository draws them (`docs/images/`). A displacement filter wobbles the strokes into a hand-drawn look, and a paper-coloured card behind each one keeps them readable in GitHub's light and dark themes alike. Run `python3 docs/images/generate.py` to rebuild them.
+> Those logos are not fetched from anywhere — this repository draws them (`docs/images/`). A displacement filter wobbles the strokes into a hand-drawn look, and a paper-coloured card behind each one keeps them readable in GitHub's light and dark themes alike. The flow diagram above (`flow.en.svg`) is drawn the same way. Run `python3 docs/images/generate.py` and `python3 docs/images/generate_flow.py` to rebuild them.
 
 <br/>
 

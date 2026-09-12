@@ -73,32 +73,13 @@
 
 ## 🔀 설명 요청 흐름도
 
-```mermaid
-flowchart TD
-    A["백엔드 응답 4종 중 3종<br/>(course · congestion · alternatives)"] --> B["FactsNormalizer<br/>평평한 facts 객체 하나로 정규화"]
-    B --> C["BackendFacts(courseUuid, json)"]
+<div align="center">
 
-    D["hanjeok-bundle.txt<br/>문서 9개"] --> E["BundleLoader<br/>FILE 마커 파싱 · 마커 위조 검사"]
-    E --> F["PromptAssembler<br/>systemText = 번들 원문 그대로"]
+<img src="docs/images/flow.svg" alt="설명 요청 흐름도 — 백엔드 응답 3종은 FactsNormalizer 를 지나 BackendFacts 로, hanjeok-bundle.txt 는 BundleLoader·PromptAssembler 를 지나 systemText 로 들어가 ExplanationService.explain() 에서 만난다. ProviderResult 가 Refused·Failed 면 Unavailable, Answered 면 CitationValidator 로 가고, 인용이 유효하면 Explained 가 되어 ForbiddenBehaviours.check() 를 거친다. 두 갈래 모두 ViolationTally 로 모인다." width="900">
 
-    C --> G["ExplanationService.explain()"]
-    F --> G
+</div>
 
-    G --> H{"ExplanationProvider"}
-    H -->|"Anthropic<br/>1h 캐시 + 구조화 출력"| I["ProviderResult"]
-    H -->|"OpenRouter<br/>tool_choice로 스키마 강제"| I
-
-    I -->|Refused| X["Unavailable(거절 사유)"]
-    I -->|Failed| X
-    I -->|Answered| J{"CitationValidator<br/>번들에 실재하는 경로인가?"}
-
-    J -->|Invalid| X
-    J -->|Valid| K["Explained(설명 + 인용)"]
-
-    K --> L["ForbiddenBehaviours.check()<br/>금지 행동 8종 판정"]
-    X --> M["ViolationTally<br/>실행당 위반 / 원시 발생 횟수 집계"]
-    L --> M
-```
+`백엔드 응답 3종 → FactsNormalizer → BackendFacts` 와 `hanjeok-bundle.txt → BundleLoader → PromptAssembler` 가 `ExplanationService.explain()` 에서 만나고, `ExplanationProvider → ProviderResult → CitationValidator` 를 지나 `Explained` 또는 `Unavailable` 로 갈라진 뒤 `ForbiddenBehaviours.check()` · `ViolationTally` 로 모입니다.
 
 `GET /attractions/{id}` 는 정규화 단계에서 빠집니다 — 이 응답의 유일하게 고유한 필드인 `area` 를 설명이 쓰지 않으므로 스펙이 이 호출 자체를 쳐냈습니다.
 
@@ -151,7 +132,7 @@ flowchart TD
 | <img src="docs/images/stack/nextjs.svg" width="24" alt=""> <img src="docs/images/stack/react.svg" width="24" alt=""> <img src="docs/images/stack/typescript.svg" width="24" alt=""> <img src="docs/images/stack/tailwind.svg" width="24" alt=""> 화면 | Next.js 16, React 19, TypeScript 5, Tailwind CSS 4 |
 | <img src="docs/images/stack/docker.svg" width="24" alt=""> <img src="docs/images/stack/cloud-run.svg" width="24" alt=""> <img src="docs/images/stack/vercel.svg" width="24" alt=""> 배포 | 서버는 Docker 이미지로 Cloud Run, 화면은 Vercel ([`docs/deploy.md`](./docs/deploy.md)) |
 
-> 위 로고는 외부에서 가져온 이미지가 아니라 이 저장소가 직접 그린 SVG 입니다(`docs/images/`). 선을 흔드는 필터를 얹어 손그림처럼 보이게 했고, 배경에 종이색 카드를 깔아 깃허브 라이트·다크 어느 테마에서도 읽힙니다. 고칠 일이 생기면 `python3 docs/images/generate.py` 로 다시 만듭니다.
+> 위 로고는 외부에서 가져온 이미지가 아니라 이 저장소가 직접 그린 SVG 입니다(`docs/images/`). 선을 흔드는 필터를 얹어 손그림처럼 보이게 했고, 배경에 종이색 카드를 깔아 깃허브 라이트·다크 어느 테마에서도 읽힙니다. 위 흐름도(`flow.svg`)도 같은 방식입니다. 고칠 일이 생기면 `python3 docs/images/generate.py`, `python3 docs/images/generate_flow.py` 로 다시 만듭니다.
 
 <br/>
 
