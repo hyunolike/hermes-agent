@@ -14,6 +14,9 @@
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.0-6DB33F?logo=springboot&logoColor=white)
 ![Gradle](https://img.shields.io/badge/Gradle-Kotlin%20DSL-02303A?logo=gradle&logoColor=white)
 ![Anthropic](https://img.shields.io/badge/Anthropic-Java%20SDK%202.34.0-D97757?logo=anthropic&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-blue.svg)
+
+**[🔗 Live Demo](https://hermes-agent-olive-beta.vercel.app)**
 
 [한국어](./README.md) · **English**
 
@@ -251,4 +254,4 @@ hermes-agent
 
 ## 📄 License
 
-No license has been specified for this repository.
+[MIT License](./LICENSE) — free to use, modify, and distribute.

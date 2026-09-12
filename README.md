@@ -14,6 +14,9 @@
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.0-6DB33F?logo=springboot&logoColor=white)
 ![Gradle](https://img.shields.io/badge/Gradle-Kotlin%20DSL-02303A?logo=gradle&logoColor=white)
 ![Anthropic](https://img.shields.io/badge/Anthropic-Java%20SDK%202.34.0-D97757?logo=anthropic&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-blue.svg)
+
+**[🔗 라이브 데모](https://hermes-agent-olive-beta.vercel.app)**
 
 **한국어** · [English](./README.en.md)
 
@@ -329,4 +332,4 @@ hermes-agent
 
 ## 📄 라이선스
 
-별도의 라이선스가 지정되어 있지 않습니다.
+[MIT License](./LICENSE) — 자유롭게 사용, 수정, 배포할 수 있습니다.
