@@ -1,7 +1,8 @@
 package com.hermes.shared.config
 
-import com.hermes.llm.AnthropicExplanationProvider
+import com.hermes.llm.ChatClients
 import com.hermes.llm.OpenAiCompatibleExplanationProvider
+import com.hermes.llm.SpringAiExplanationProvider
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -17,10 +18,21 @@ import org.junit.jupiter.api.Test
 class LlmSelectionTest {
 
     @Test
-    fun `기본값은 anthropic 이다`() {
+    fun `anthropic 은 Spring AI 로 돈다`() {
         val provider = LlmSelection.provider("anthropic", "claude-opus-5") { "key" }
 
-        assertThat(provider).isInstanceOf(AnthropicExplanationProvider::class.java)
+        assertThat(provider).isInstanceOf(SpringAiExplanationProvider::class.java)
+        assertThat(provider.name).isEqualTo("anthropic")
+    }
+
+    @Test
+    fun `anthropic 도 설정한 모델을 따른다`() {
+        // 구 코드는 이 인자를 버리고 claude-opus-5 를 박아 두었다. docs/deploy.md 는
+        // HERMES_LLM_MODEL 이 "프로바이더에 맞는 모델 이름"이라고 약속하므로,
+        // 문서가 약속한 것을 코드가 지키지 않던 상태였다.
+        val options = ChatClients.anthropicOptions("claude-sonnet-5")
+
+        assertThat(options.model).isEqualTo("claude-sonnet-5")
     }
 
     @Test
