@@ -65,7 +65,6 @@
 ```kotlin
 package com.hermes.shared.config
 
-import com.github.victools.jsonschema.generator.SchemaGenerator
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.lang.reflect.Type
@@ -81,11 +80,11 @@ class DependencyPinTest {
 
     @Test
     fun `victools 는 4점대 시그니처를 유지한다`() {
-        val method = SchemaGenerator::class.java.getMethod(
-            "generateSchema",
-            Type::class.java,
-            Array<Type>::class.java,
-        )
+        // 리플렉션으로 찾는다 — victools 는 anthropic-java 의 전이 의존이라 테스트
+        // 컴파일 클래스패스에 노출된다는 보장이 없다. 런타임에는 반드시 있다.
+        val generator = Class.forName("com.github.victools.jsonschema.generator.SchemaGenerator")
+
+        val method = generator.getMethod("generateSchema", Type::class.java, Array<Type>::class.java)
 
         assertThat(method).isNotNull()
     }
@@ -95,7 +94,9 @@ class DependencyPinTest {
 - [ ] **Step 2: 테스트가 실패하는지 확인한다**
 
 Run: `./gradlew test --tests '*DependencyPinTest*'`
-Expected: FAIL — `SchemaGenerator` 를 import 할 수 없어 컴파일 에러. (아직 Spring AI 도 victools 도 테스트 클래스패스에 직접 없다.)
+Expected: FAIL — `ClassNotFoundException: com.github.victools.jsonschema.generator.SchemaGenerator`. 아직 victools 가 클래스패스에 없다.
+
+`NoSuchMethodException` 으로 실패하면 victools 가 이미 있고 5.x 라는 뜻이다. 그래도 진행한다 — Step 3 의 핀이 정확히 그것을 고친다.
 
 - [ ] **Step 3: 의존성과 핀을 추가한다**
 
@@ -1076,10 +1077,16 @@ git rm server/src/main/kotlin/com/hermes/llm/OpenAiCompatibleExplanationProvider
 
 OpenRouter 를 `tool_choice` 로 되살리기로 했으면 이 둘은 **남긴다.**
 
-- [ ] **Step 4: 쓰이지 않는 의존성을 정리한다**
+- [ ] **Step 4: 의존성이 제자리에 있는지 확인한다 (지우지 않는다)**
 
-`build.gradle.kts` 에서 `implementation("com.anthropic:anthropic-java:2.34.0")` 를
-지운다 — Spring AI 가 자기 버전을 끌어온다. victools 핀은 **그대로 둔다.**
+`build.gradle.kts` 를 읽고 아래 셋이 그대로 있는지 확인한다. **하나도 지우지 않는다.**
+
+- `com.anthropic:anthropic-java:2.52.0` — `AnthropicOkHttpClient` 가 여기 있다. Spring AI 는 `anthropic-java-core` 만 끌어오므로 이것을 지우면 `LlmSelection` 이 컴파일되지 않는다
+- `com.openai:openai-java:4.49.0` — `OpenAIOkHttpClient` 가 여기 있다. 같은 이유
+- victools 핀 세 줄
+
+`com.anthropic:anthropic-java:2.34.0` 라는 **옛 버전 줄이 남아 있으면** 그것만
+지운다 (Task 1 이 교체했으므로 정상이라면 없다).
 
 - [ ] **Step 5: 전체 검증**
 
