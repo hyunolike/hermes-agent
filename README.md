@@ -23,6 +23,26 @@
 
 <br/>
 
+<div align="center">
+
+<img src="docs/images/screens/course.png" alt="The course screen: three stops with congestion grades, an explanation beneath them, and three citation chips naming the documents it used." width="820">
+
+<sub>The explanation sits under the course, and every citation chip opens the exact document the model saw.<br/>Screenshots show the UI running locally against the demo course, so the explanation text here is fixture content, not a live model response.</sub>
+
+**[Live demo](https://agent.hanjeok.com)** · **[evidence browser](https://agent.hanjeok.com/evidence)**
+
+</div>
+
+<br/>
+
+**The short version**
+
+- **The backend ranks. The LLM only explains.** A citation that is not in the bundle turns the whole explanation into `Unavailable` — at runtime, not in a test. No explanation is the safe failure.
+- **Eight forbidden behaviours, counted on every run.** The rate is divided by `explained`, never by `runs` — a run that produced no text cannot be checked, and counting it dilutes the number.
+- **The violation rate did not pick the model.** Both candidates scored 0% on all eight. A separate, non-blocking LLM judge did: 1.2 vs 0.5 readability findings per run, which is why `gpt-4o` ships.
+
+<br/>
+
 ## 📖 Introduction
 
 A travel service's backend has already done the computing. Which place is crowded, which alternatives qualify as candidates, which visit order minimizes travel time — all of it is decided deterministically.
@@ -66,6 +86,16 @@ The server picks from the same three names (`HERMES_LLM_PROVIDER`). For a while 
 ### 5. Two screens — the explanation next to its evidence
 
 `frontend/`'s `/course/[uuid]` draws the course and puts the explanation beneath it. Clicking a citation chip opens the exact document the model saw, without leaving the page. `/evidence` lists every document in the bundle with its size — "this much is what the LLM could see" is all that screen sets out to prove.
+
+<div align="center">
+
+<img src="docs/images/screens/citation.png" alt="A citation chip opened: the wiki document the model cited, shown in full without leaving the page." width="440"> <img src="docs/images/screens/evidence.png" alt="The evidence browser: nine documents with their byte sizes, and the selected document's text." width="440">
+
+<sub>Left: a citation chip opens the document the model cited. Right: `/evidence` — every document in the bundle, with its size.</sub>
+
+</div>
+
+<br/>
 
 **Facts and explanation arrive separately.** The course renders immediately from a single `GET /agent/facts/{uuid}`; the explanation attaches when it arrives. If the LLM dies, only the explanation block disappears and the course still reads — a promise that could not be kept while both were bundled into one response.
 
@@ -357,4 +387,4 @@ The procedure and the values actually deployed (URLs · region · secret names �
 
 ## 📄 License
 
-No license has been specified for this repository.
+[MIT](./LICENSE) — © 2026 hyunolike.
