@@ -1,6 +1,5 @@
 package com.hermes.harness
 
-import com.anthropic.client.okhttp.AnthropicOkHttpClient
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.hermes.context.BundleLoader
 import com.hermes.context.CitationValidator
@@ -10,11 +9,10 @@ import com.hermes.explain.ExplainOutcome
 import com.hermes.explain.ExplanationService
 import com.hermes.explain.Explained
 import com.hermes.explain.Unavailable
-import com.hermes.llm.AnthropicExplanationProvider
 import com.hermes.llm.ExplanationProvider
 import com.hermes.facts.FactsSource
 import com.hermes.facts.RestHanjeokClient
-import com.hermes.llm.OpenAiCompatibleExplanationProvider
+import com.hermes.shared.config.LlmSelection
 import org.springframework.web.client.RestClient
 import java.io.File
 import java.util.concurrent.Executors
@@ -67,18 +65,16 @@ fun main(args: Array<String>) {
     val runs = args.getOrNull(1)?.toIntOrNull() ?: 5
 
     val bundle = BundleLoader.load()
-    val provider: ExplanationProvider = when (providerName) {
-        "anthropic" -> AnthropicExplanationProvider(AnthropicOkHttpClient.fromEnv())
-        "openrouter" -> OpenAiCompatibleExplanationProvider.openRouter(
-            apiKey = requireCredential("OPENROUTER_API_KEY"),
-            model = System.getenv("OPENROUTER_MODEL") ?: "nvidia/nemotron-nano-9b-v2:free",
-        )
-        "openai" -> OpenAiCompatibleExplanationProvider.openAi(
-            apiKey = requireCredential("OPENAI_API_KEY"),
-            model = System.getenv("OPENAI_MODEL") ?: "gpt-4o-mini",
-        )
+    // 프로바이더 조립은 LlmSelection 하나에만 둔다. 여기에 분기를 복제하면
+    // 하네스가 재는 것과 서버가 띄우는 것이 조용히 갈라진다 — 이 저장소가
+    // 한 번 겪은 일이다.
+    val model = when (providerName) {
+        "anthropic" -> System.getenv("ANTHROPIC_MODEL") ?: "claude-opus-5"
+        "openrouter" -> System.getenv("OPENROUTER_MODEL") ?: "nvidia/nemotron-nano-9b-v2:free"
+        "openai" -> System.getenv("OPENAI_MODEL") ?: "gpt-4o-mini"
         else -> error("unknown provider: $providerName (expected anthropic, openrouter, or openai)")
     }
+    val provider: ExplanationProvider = LlmSelection.provider(providerName, model, System::getenv)
 
     val service = ExplanationService(PromptAssembler(bundle), CitationValidator(bundle), provider)
 

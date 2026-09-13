@@ -82,4 +82,13 @@ class LlmSelectionTest {
         assertThatThrownBy { LlmSelection.provider("openai", "gpt-4o", { "" }) }
             .hasMessageContaining("OPENAI_API_KEY")
     }
+
+    @Test
+    fun `세 이름 모두 같은 함수 하나로 만들어진다`() {
+        val names = listOf("anthropic", "openai", "openrouter")
+
+        val made = names.map { LlmSelection.provider(it, "some-model", { "key" }).name }
+
+        assertThat(made).isEqualTo(names)
+    }
 }
