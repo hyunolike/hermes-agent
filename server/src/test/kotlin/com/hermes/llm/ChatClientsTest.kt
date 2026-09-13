@@ -1,6 +1,7 @@
 package com.hermes.llm
 
 import com.anthropic.models.messages.OutputConfig
+import com.fasterxml.jackson.core.type.TypeReference
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.ai.anthropic.AnthropicCacheStrategy
@@ -46,9 +47,17 @@ class ChatClientsTest {
 
     @Test
     fun `유도된 스키마는 두 필드를 모두 요구한다`() {
-        val schema = ChatClients.explanationSchema().schema().toString()
+        // 문자열 부분일치(contains)로는 부족하다 — "explanation"/"citations" 는
+        // required 가 비어 있어도 properties 블록에 그대로 나타난다. required
+        // 배열 자체를 꺼내야 "선언됨"과 "필수"를 구분할 수 있다. 같은 스키마를
+        // RawParams.kt 의 StructuredMessageCreateParams.view() 가 이미 같은
+        // 경로로 읽으므로, 두 테스트가 스키마를 같은 방식으로 검사하도록 맞춘다.
+        val requiredFields = ChatClients.explanationSchema().schema()
+            ._additionalProperties()["required"]
+            ?.convert(object : TypeReference<List<String>>() {})
+            ?: emptyList()
 
-        assertThat(schema).contains("explanation").contains("citations")
+        assertThat(requiredFields).containsExactlyInAnyOrder("explanation", "citations")
     }
 
     @Test
