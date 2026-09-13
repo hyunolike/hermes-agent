@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
+import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.prompt.Prompt
 
 /**
@@ -21,9 +22,9 @@ class SpringAiExplanationProvider(
 
     private val log = LoggerFactory.getLogger(SpringAiExplanationProvider::class.java)
 
-    // 블록 바디다 — 거절/결측 판단마다 조기 return 이 필요한데, 식 바디(`= try { ... }`)에서는
-    // Kotlin 2.2 가 그 return 을 금지한다(컴파일로 확인: "Returns are prohibited in functions
-    // with expression body").
+    // 블록 바디다 — 응답이 null 일 때 조기 return 이 필요한데, 식 바디(`= try { ... }`)
+    // 에서는 Kotlin 2.2 가 그 return 을 금지한다(컴파일로 확인: "Returns are
+    // prohibited in functions with expression body").
     override fun explain(systemText: String, userText: String): ProviderResult {
         return try {
             val response = chatClient
@@ -32,6 +33,37 @@ class SpringAiExplanationProvider(
                 .chatResponse()
                 ?: return Failed("response was null")
 
+            toProviderResult(response)
+        } catch (e: Exception) {
+            // 예외의 정체를 지우지 않는다 — 영구적 프로그래밍 오류가 소켓 타임아웃과
+            // 구분이 안 되면, 호출자가 Failed 를 재시도할 때 전액을 들여 같은 버그를
+            // 반복한다. (네트워크 호출 자체가 던지는 예외만 여기서 잡는다 — 응답을
+            // ProviderResult 로 바꾸는 로직 자체의 예외는 toProviderResult 가 자체적으로
+            // 감싼다.)
+            log.warn("$name explain failed", e)
+            Failed("${e::class.simpleName}: ${e.message}")
+        }
+    }
+
+    // public 이다(companion 자체를 private 로 두지 않는다) — Task 6 리뷰가 요구한
+    // "매핑은 손으로 조립한 ChatResponse 로 직접 테스트할 수 있어야 한다" 를 만족하려면
+    // SpringAiResponseMappingTest 가 SpringAiExplanationProvider.toProviderResult 를
+    // 실제 네트워크 없이 부를 수 있어야 한다.
+    companion object {
+        private const val REFUSAL = "refusal"
+        private val MAPPER = ObjectMapper()
+
+        /**
+         * `ChatResponse` 하나를 받아 `ProviderResult` 하나를 내는 순수 함수. 입력 밖의
+         * 어떤 것도 만지지 않는다(네트워크 호출도, `this.name`/`this.chatClient` 도) —
+         * 그래서 실제 호출 없이, 손으로 조립한 `ChatResponse` 로 바로 테스트할 수 있다.
+         *
+         * `explain` 이 쥐고 있는 것은 네트워크 호출과 그 바깥 try/catch 뿐이다. 이
+         * 함수 자신의 실패(JSON 파싱 등)는 여기서 끝까지 감싸 `Failed` 로 돌려준다 —
+         * "malformed content 는 크래시가 아니라 Failed" 라는 요구가 직접 테스트
+         * 가능해야 하기 때문이다(explain 의 바깥 catch 를 거치지 않고도).
+         */
+        fun toProviderResult(response: ChatResponse): ProviderResult {
             val generation = response.result ?: return Failed("response carried no generation")
 
             // 거절을 content 읽기 전에 가른다. 거절은 HTTP 200 에 빈 content 로 오므로
@@ -52,12 +84,20 @@ class SpringAiExplanationProvider(
             // 구조화 출력(effort+schema) 이 강제하는 계약이라 text 는 Explanation 의
             // JSON 이다. OpenAiCompatibleExplanationProvider 와 같은 방식으로 판다 —
             // 어느 프로바이더가 뒤에 있든 같은 파싱 경로를 타야 비교가 정직하다.
-            val parsed = MAPPER.readTree(text)
+            //
+            // 파싱 실패는 여기서 잡아 Failed 로 접는다 — 예외의 정체(클래스명+메시지)는
+            // 지우지 않는다.
+            val parsed = try {
+                MAPPER.readTree(text)
+            } catch (e: Exception) {
+                return Failed("${e::class.simpleName}: ${e.message}")
+            }
+
             val explanationText = parsed.at("/explanation").asText()
             if (explanationText.isNullOrBlank()) return Failed("structured content had no explanation field")
 
             val usage = response.metadata.usage
-            Answered(
+            return Answered(
                 explanation = Explanation(
                     explanation = explanationText,
                     citations = parsed.at("/citations").map { it.asText() },
@@ -78,17 +118,6 @@ class SpringAiExplanationProvider(
                     outputTokens = (usage.completionTokens ?: 0).toLong(),
                 ),
             )
-        } catch (e: Exception) {
-            // 예외의 정체를 지우지 않는다 — 영구적 프로그래밍 오류가 소켓 타임아웃과
-            // 구분이 안 되면, 호출자가 Failed 를 재시도할 때 전액을 들여 같은 버그를
-            // 반복한다.
-            log.warn("$name explain failed", e)
-            Failed("${e::class.simpleName}: ${e.message}")
         }
-    }
-
-    private companion object {
-        const val REFUSAL = "refusal"
-        val MAPPER = ObjectMapper()
     }
 }
