@@ -48,6 +48,7 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.springframework.ai:spring-ai-anthropic")
     implementation("org.springframework.ai:spring-ai-openai")
+    implementation("org.springframework.ai:spring-ai-client-chat")
     implementation("com.anthropic:anthropic-java:2.52.0")
     implementation("com.openai:openai-java:4.49.0")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
