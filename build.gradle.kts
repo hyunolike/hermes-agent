@@ -39,13 +39,17 @@ repositories { mavenCentral() }
 dependencyManagement {
     imports {
         mavenBom("org.springframework.modulith:spring-modulith-bom:2.1.0")
+        mavenBom("org.springframework.ai:spring-ai-bom:2.0.1")
     }
 }
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
-    implementation("com.anthropic:anthropic-java:2.34.0")
+    implementation("org.springframework.ai:spring-ai-anthropic")
+    implementation("org.springframework.ai:spring-ai-openai")
+    implementation("com.anthropic:anthropic-java:2.52.0")
+    implementation("com.openai:openai-java:4.49.0")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-restclient")
@@ -120,6 +124,18 @@ fun JavaExec.applyDotEnv() {
             }
         }
     }
+}
+
+// Spring AI 2.0.1 은 victools 5.0.0 을 끌어온다. 그런데 Anthropic SDK 의 구조화
+// 출력이 4.x 시그니처를 부르므로, 5.0.0 이 이기면 스키마 유도가 런타임에
+// NoSuchMethodError 로 죽는다. 컴파일은 통과하므로 이 핀이 유일한 방어선이다.
+// DependencyPinTest 가 이것을 지킨다.
+configurations.all {
+    resolutionStrategy.force(
+        "com.github.victools:jsonschema-generator:4.38.0",
+        "com.github.victools:jsonschema-module-jackson:4.38.0",
+        "com.github.victools:jsonschema-module-swagger-2:4.38.0",
+    )
 }
 
 tasks.register<JavaExec>("eval") {
