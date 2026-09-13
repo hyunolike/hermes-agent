@@ -1,5 +1,6 @@
 package com.hermes.shared.config
 
+import com.hermes.llm.CapturingEndpoint
 import com.hermes.llm.ChatClients
 import com.hermes.llm.OpenAiCompatibleExplanationProvider
 import com.hermes.llm.SpringAiExplanationProvider
@@ -19,7 +20,7 @@ class LlmSelectionTest {
 
     @Test
     fun `anthropic 은 Spring AI 로 돈다`() {
-        val provider = LlmSelection.provider("anthropic", "claude-opus-5") { "key" }
+        val provider = LlmSelection.provider("anthropic", "claude-opus-5", { "key" })
 
         assertThat(provider).isInstanceOf(SpringAiExplanationProvider::class.java)
         assertThat(provider.name).isEqualTo("anthropic")
@@ -36,8 +37,25 @@ class LlmSelectionTest {
     }
 
     @Test
+    fun `LlmSelection 이 고른 anthropic 프로바이더가 설정한 모델을 실제 요청에 싣는다`() {
+        // 위 테스트는 ChatClients.anthropicOptions 하나만 본다 — LlmSelection 이 그
+        // 함수에 model 을 제대로 넘기는지는 검증하지 않는다. LlmSelection.provider(...)
+        // 의 "anthropic" 분기가 model 대신 다른 리터럴을 박아 넣어도 그 테스트는
+        // 여전히 초록으로 남는다. 여기서는 LlmSelection.provider 가 실제로 조립해
+        // 내보내는 프로바이더를 통해 루프백 엔드포인트로 나가는 바이트를 직접 본다 —
+        // 설정에서 요청까지 전 구간을 잇는 유일한 테스트다.
+        CapturingEndpoint().use { endpoint ->
+            val provider = LlmSelection.provider("anthropic", "claude-sonnet-5", { "key" }, endpoint.baseUrl)
+
+            provider.explain("system", "user")
+
+            assertThat(endpoint.capturedBody()["model"].asText()).isEqualTo("claude-sonnet-5")
+        }
+    }
+
+    @Test
     fun `openai 를 고를 수 있다`() {
-        val provider = LlmSelection.provider("openai", "gpt-4o") { "key" }
+        val provider = LlmSelection.provider("openai", "gpt-4o", { "key" })
 
         assertThat(provider).isInstanceOf(OpenAiCompatibleExplanationProvider::class.java)
         assertThat(provider.name).isEqualTo("openai")
@@ -45,14 +63,14 @@ class LlmSelectionTest {
 
     @Test
     fun `openrouter 를 고를 수 있다`() {
-        assertThat(LlmSelection.provider("openrouter", "x/y") { "key" }.name).isEqualTo("openrouter")
+        assertThat(LlmSelection.provider("openrouter", "x/y", { "key" }).name).isEqualTo("openrouter")
     }
 
     @Test
     fun `모르는 이름은 기동을 멈춘다`() {
         // 조용히 기본값으로 떨어지면, 오타 하나가 "설정한 줄 알았던 프로바이더"와
         // "실제로 도는 프로바이더"를 갈라놓는다. 그 차이는 요금 고지서에서야 보인다.
-        assertThatThrownBy { LlmSelection.provider("gpt5", "m") { "key" } }
+        assertThatThrownBy { LlmSelection.provider("gpt5", "m", { "key" }) }
             .hasMessageContaining("gpt5")
     }
 
@@ -61,7 +79,7 @@ class LlmSelectionTest {
         // 빈 키는 그대로 프로바이더까지 가서 401 로 돌아오고, 그 401 은 "키가
         // 틀렸다"와 "키를 안 넣었다"를 구분해 주지 않는다. 하네스에서 이미 한 번
         // 겪은 혼동이라 서버에서 되풀이하지 않는다.
-        assertThatThrownBy { LlmSelection.provider("openai", "gpt-4o") { "" } }
+        assertThatThrownBy { LlmSelection.provider("openai", "gpt-4o", { "" }) }
             .hasMessageContaining("OPENAI_API_KEY")
     }
 }
