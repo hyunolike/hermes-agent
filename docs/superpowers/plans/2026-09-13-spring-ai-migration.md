@@ -973,7 +973,47 @@ Expected: FAIL — 아직 `OpenAiCompatibleExplanationProvider` 를 돌려준다
 `com.openai.client.okhttp.OpenAIOkHttpClient`,
 `org.springframework.ai.openai.OpenAiChatModel`.
 
-- [ ] **Step 4: 테스트가 통과하는지 확인한다**
+- [ ] **Step 4: OpenAI 호환 경로의 캡처 테스트를 추가한다**
+
+`ChatClients.OPENAI_BASE_URL` 과 `OPENROUTER_BASE_URL` 은 구 프로바이더의
+엔드포인트에서 `/v1/chat/completions` 를 뗀 값이다. 즉 **Spring AI 가 정확히 그
+경로를 덧붙일 때만** 옳은데, 그것을 검사하는 테스트가 없다. 틀리면 아래 유료
+실행이 통째로 헛돈다. 루프백으로 무료로 닫는다.
+
+`server/src/test/kotlin/com/hermes/llm/SpringAiRequestShapeTest.kt` 에 더한다:
+
+```kotlin
+    @Test
+    fun `openai 호환 요청은 baseUrl 뒤에 v1 chat completions 를 붙인다`() {
+        CapturingEndpoint().use { endpoint ->
+            val model = OpenAiChatModel.builder()
+                .openAiClient(
+                    OpenAIOkHttpClient.builder()
+                        .apiKey("sk-not-a-real-key")
+                        .baseUrl(endpoint.baseUrl)
+                        .build(),
+                )
+                .options(ChatClients.openAiCompatibleOptions("gpt-4o", endpoint.baseUrl))
+                .build()
+
+            SpringAiExplanationProvider("openai", ChatClient.create(model))
+                .explain(systemText, factsJson)
+
+            // 경로가 이 값이어야 상수에서 뗀 접미사가 맞는다.
+            assertThat(endpoint.capturedPath()).isEqualTo("/v1/chat/completions")
+            val body = endpoint.capturedBody()
+            assertThat(body["model"].asText()).isEqualTo("gpt-4o")
+            // maxTokens 는 이 테스트 말고는 어디서도 안 걸린다.
+            assertThat(body["max_tokens"].asInt()).isEqualTo(16000)
+        }
+    }
+```
+
+`CapturingEndpoint` 에 경로를 기록하는 기능이 없으면 더한다 — 받은 요청의
+`exchange.requestURI.path` 를 저장하고 `capturedPath(): String` 로 돌려준다.
+
+`max_tokens` 의 실제 JSON 키가 다르면(`maxTokens` 등) 캡처된 본문을 보고 맞춘다.
+본문을 눈으로 확인한 뒤 단언을 고치고, 무엇이었는지 보고서에 적는다.
 
 Run: `./gradlew build`
 Expected: BUILD SUCCESSFUL
