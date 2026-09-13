@@ -15,6 +15,8 @@
 ![Gradle](https://img.shields.io/badge/Gradle-Kotlin%20DSL-02303A?logo=gradle&logoColor=white)
 ![Anthropic](https://img.shields.io/badge/Anthropic-Java%20SDK%202.34.0-D97757?logo=anthropic&logoColor=white)
 
+<img src="docs/images/stack/kotlin.svg" alt="Kotlin" width="46"> <img src="docs/images/stack/spring-boot.svg" alt="Spring Boot" width="46"> <img src="docs/images/stack/gradle.svg" alt="Gradle" width="46"> <img src="docs/images/stack/anthropic.svg" alt="Anthropic" width="46"> <img src="docs/images/stack/nextjs.svg" alt="Next.js" width="46"> <img src="docs/images/stack/docker.svg" alt="Docker" width="46">
+
 **한국어** · [English](./README.en.md)
 
 </div>
@@ -71,32 +73,13 @@
 
 ## 🔀 설명 요청 흐름도
 
-```mermaid
-flowchart TD
-    A["백엔드 응답 4종 중 3종<br/>(course · congestion · alternatives)"] --> B["FactsNormalizer<br/>평평한 facts 객체 하나로 정규화"]
-    B --> C["BackendFacts(courseUuid, json)"]
+<div align="center">
 
-    D["hanjeok-bundle.txt<br/>문서 9개"] --> E["BundleLoader<br/>FILE 마커 파싱 · 마커 위조 검사"]
-    E --> F["PromptAssembler<br/>systemText = 번들 원문 그대로"]
+<img src="docs/images/flow.svg" alt="설명 요청 흐름도 — 백엔드 응답 3종은 FactsNormalizer 를 지나 BackendFacts 로, hanjeok-bundle.txt 는 BundleLoader·PromptAssembler 를 지나 systemText 로 들어가 ExplanationService.explain() 에서 만난다. ProviderResult 가 Refused·Failed 면 Unavailable, Answered 면 CitationValidator 로 가고, 인용이 유효하면 Explained 가 되어 ForbiddenBehaviours.check() 를 거친다. 두 갈래 모두 ViolationTally 로 모인다." width="900">
 
-    C --> G["ExplanationService.explain()"]
-    F --> G
+</div>
 
-    G --> H{"ExplanationProvider"}
-    H -->|"Anthropic<br/>1h 캐시 + 구조화 출력"| I["ProviderResult"]
-    H -->|"OpenRouter<br/>tool_choice로 스키마 강제"| I
-
-    I -->|Refused| X["Unavailable(거절 사유)"]
-    I -->|Failed| X
-    I -->|Answered| J{"CitationValidator<br/>번들에 실재하는 경로인가?"}
-
-    J -->|Invalid| X
-    J -->|Valid| K["Explained(설명 + 인용)"]
-
-    K --> L["ForbiddenBehaviours.check()<br/>금지 행동 8종 판정"]
-    X --> M["ViolationTally<br/>실행당 위반 / 원시 발생 횟수 집계"]
-    L --> M
-```
+`백엔드 응답 3종 → FactsNormalizer → BackendFacts` 와 `hanjeok-bundle.txt → BundleLoader → PromptAssembler` 가 `ExplanationService.explain()` 에서 만나고, `ExplanationProvider → ProviderResult → CitationValidator` 를 지나 `Explained` 또는 `Unavailable` 로 갈라진 뒤 `ForbiddenBehaviours.check()` · `ViolationTally` 로 모입니다.
 
 `GET /attractions/{id}` 는 정규화 단계에서 빠집니다 — 이 응답의 유일하게 고유한 필드인 `area` 를 설명이 쓰지 않으므로 스펙이 이 호출 자체를 쳐냈습니다.
 
@@ -132,14 +115,24 @@ flowchart TD
 
 ## 🛠 기술 스택
 
+<div align="center">
+
+<img src="docs/images/tech-stack.svg" alt="hermes-agent 기술 스택 — 손으로 그린 로고 모음" width="740">
+
+</div>
+
 | 구분 | 사용 기술 |
 | --- | --- |
-| 언어 · 런타임 | Kotlin 2.2.21, JVM Toolchain 21 |
-| 프레임워크 | Spring Boot 4.1.0 |
-| 빌드 | Gradle (Kotlin DSL), 단일 모듈 + 분리된 `harness` 소스셋 |
-| LLM | Anthropic Java SDK 2.34.0 (`claude-opus-5`), OpenRouter Chat Completions (`java.net.http.HttpClient`) |
+| <img src="docs/images/stack/kotlin.svg" width="24" alt=""> <img src="docs/images/stack/java.svg" width="24" alt=""> 언어 · 런타임 | Kotlin 2.2.21, JVM Toolchain 21 |
+| <img src="docs/images/stack/spring-boot.svg" width="24" alt=""> 프레임워크 | Spring Boot 4.1.0, Spring Modulith 2.1.0 |
+| <img src="docs/images/stack/gradle.svg" width="24" alt=""> 빌드 | Gradle (Kotlin DSL), 단일 모듈 + 분리된 `harness` 소스셋 |
+| <img src="docs/images/stack/anthropic.svg" width="24" alt=""> <img src="docs/images/stack/openai.svg" width="24" alt=""> LLM | Anthropic Java SDK 2.34.0 (`claude-opus-5`), OpenAI · OpenRouter Chat Completions (`java.net.http.HttpClient`) |
 | 직렬화 | Jackson (`jackson-module-kotlin`) |
-| 테스트 | JUnit 5 (`spring-boot-starter-test`) |
+| <img src="docs/images/stack/junit.svg" width="24" alt=""> 테스트 | JUnit 5 (`spring-boot-starter-test`), 프론트엔드는 Vitest + Testing Library |
+| <img src="docs/images/stack/nextjs.svg" width="24" alt=""> <img src="docs/images/stack/react.svg" width="24" alt=""> <img src="docs/images/stack/typescript.svg" width="24" alt=""> <img src="docs/images/stack/tailwind.svg" width="24" alt=""> 화면 | Next.js 16, React 19, TypeScript 5, Tailwind CSS 4 |
+| <img src="docs/images/stack/docker.svg" width="24" alt=""> <img src="docs/images/stack/cloud-run.svg" width="24" alt=""> <img src="docs/images/stack/vercel.svg" width="24" alt=""> 배포 | 서버는 Docker 이미지로 Cloud Run, 화면은 Vercel ([`docs/deploy.md`](./docs/deploy.md)) |
+
+> 위 로고는 외부에서 가져온 이미지가 아니라 이 저장소가 직접 그린 SVG 입니다(`docs/images/`). 선을 흔드는 필터를 얹어 손그림처럼 보이게 했고, 배경에 종이색 카드를 깔아 깃허브 라이트·다크 어느 테마에서도 읽힙니다. 위 흐름도(`flow.svg`)도 같은 방식입니다. 고칠 일이 생기면 `generate.py` · `generate_flow.py` · `generate_deploy.py` 를 다시 돌립니다(`python3 docs/images/<이름>`).
 
 <br/>
 
@@ -213,7 +206,7 @@ violations  : rate = runs-with-violation / explained (NOT /runs); occurrences = 
 숫자 두 개가 분모를 공유하지 않는다는 점이 중요합니다.
 
 - **`rate`의 분모는 `runs`가 아니라 `explained`입니다.** `Refused`·`Failed`·인용 무효로 끝난 실행에는 점검할 설명 텍스트 자체가 없습니다. 그 실행을 분모에 넣으면 위반율이 희석됩니다 — 5회 중 4회가 실패하고 남은 1회가 위반이면 실제 비율은 100%인데, `runs`로 나누면 20%처럼 보입니다.
-- **`occurrences`는 원시 발생 횟수입니다.** `INVENTED_PLACE`는 한 실행에서 지어낸 이름을 여러 개 낼 수 있어 이 값이 실행 수를 넘을 수 있습니다. 나머지 다섯은 실행당 최대 1건입니다.
+- **`occurrences`는 원시 발생 횟수입니다.** `INVENTED_PLACE`는 한 실행에서 지어낸 이름을 여러 개 낼 수 있어 이 값이 실행 수를 넘을 수 있습니다. 나머지 일곱은 실행당 최대 1건입니다.
 - **`explained == 0`이면 `rate`는 `0.0%`가 아니라 `UNMEASURED`로 찍히고, 프로세스는 종료 코드 1로 끝납니다.** "위반 없음"과 "잴 수 없음"이 같은 숫자로 보이면, 판정기가 다 실패한 실행을 무결점 실행으로 오독하게 됩니다.
 
 <br/>
@@ -298,12 +291,36 @@ hermes-agent
 ├── server/src/main/resources/prompts/hanjeok-bundle.txt   # 근거 번들 (문서 9개)
 ├── server/src/test/kotlin                                 # 단위 테스트 (무료 · 결정론적)
 │
-└── harness/
-    ├── src/main/kotlin/.../EvalMain.kt   # 평가 진입점 (유료 · 비결정적)
-    └── fixtures/course-explanation-request.json
+├── harness/
+│   ├── src/main/kotlin/.../EvalMain.kt   # 평가 진입점 (유료 · 비결정적)
+│   └── fixtures/course-explanation-request.json
+│
+├── frontend/                                              # Next.js 16 · React 19 · Tailwind 4
+│
+└── docs/
+    ├── deploy.md                 # Cloud Run · Vercel 배포 절차 (사람이 실행한다)
+    └── images/                   # README 로고 SVG + 이를 만든 generate.py
 ```
 
 > 판정기(`ForbiddenBehaviours`)와 정규화(`FactsNormalizer`)가 `harness`가 아니라 `server` 의 main 소스셋에 있는 이유: `EvalMain`은 단위 테스트가 닿지 않는 곳에 있는데, 이 두 로직이야말로 가장 위험합니다. 판정기와 프로바이더가 서로 다른 facts 모양을 보면 검사 전체가 조용히 무력해집니다. 테스트가 닿는 곳에 둬야 실수로 깨졌을 때 잡힙니다.
+
+<br/>
+
+## 🗺 배포 구성
+
+<div align="center">
+
+<img src="docs/images/deploy.svg" alt="배포 구성도 — 브라우저가 Vercel 의 Next.js 화면을 열고, 화면은 Cloud Run 의 hermes-agent 서버(presentation · explain · context · llm)를 부른다. 서버는 한적 백엔드를 요청당 3회, LLM 프로바이더를 1회 부르고, 키는 Secret Manager 에서 환경 변수로 주입된다. 근거 번들은 GitHub Actions 가 위키에서 다시 만들어 표류를 검사한 뒤 이미지에 구워 배포한다. 평가 하네스는 배포 경로 밖에 있다." width="900">
+
+</div>
+
+서버는 Cloud Run, 화면은 Vercel. 상태도 DB도 없어 **0으로 스케일다운됩니다.** 그림에서 읽을 것 셋:
+
+- **근거는 이미지에 고정됩니다.** CI 가 위키에서 번들을 다시 만들어 커밋된 것과 다르면 빌드를 실패시키고, 통과한 번들만 이미지에 구워집니다. 런타임에 위키를 clone 하면 위키가 잠깐 안 될 때 서버가 못 뜨고, 같은 이미지가 날마다 다른 근거로 답하게 됩니다.
+- **브라우저가 보는 주소는 Cloud Run 하나뿐입니다.** 한적 주소도 API 키도 화면으로 내려가지 않습니다 — 두 호출 다 서버-서버이고, 키는 Secret Manager 에서 환경 변수로 들어옵니다.
+- **평가 하네스는 이 경로 위에 없습니다.** `harness` 소스셋은 운영 이미지에 들어가지 않고, `./gradlew eval` 은 서버를 띄우지 않고 같은 application 층을 직접 부릅니다.
+
+배포 절차와 실제 배포된 값(주소 · 리전 · 시크릿 이름 · 데모 코스)은 [`docs/deploy.md`](./docs/deploy.md) 에 있습니다.
 
 <br/>
 
