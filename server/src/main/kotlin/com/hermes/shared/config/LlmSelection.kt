@@ -72,17 +72,44 @@ object LlmSelection {
                 name = "openai",
                 apiKey = require(env, "OPENAI_API_KEY"),
                 model = model,
-                baseUrl = baseUrlOverride ?: ChatClients.OPENAI_BASE_URL,
+                baseUrl = baseUrlOverride ?: defaultBaseUrl("openai"),
             )
             "openrouter" -> springAiOpenAiCompatible(
                 name = "openrouter",
                 apiKey = require(env, "OPENROUTER_API_KEY"),
                 model = model,
-                baseUrl = baseUrlOverride ?: ChatClients.OPENROUTER_BASE_URL,
+                baseUrl = baseUrlOverride ?: defaultBaseUrl("openrouter"),
             )
             else -> error(
                 "unknown hermes.llm.provider: '$name' (expected anthropic, openai, or openrouter)",
             )
+        }
+
+    /**
+     * `baseUrlOverride` 가 없을 때 분기별로 실제로 쓰는 운영 baseUrl 을 고른다.
+     * 순수 함수로 뽑아 둔 이유는 `ChatClients` 의 옵션 조립 함수들과 같다 —
+     * "openrouter 분기가 실제로 `ChatClients.OPENROUTER_BASE_URL` 을 쓴다"를
+     * override 없이, 키 없이 직접 검사할 수 있어야 한다.
+     *
+     * 이 함수를 따로 떼어내기 전에는 `baseUrlOverride ?: ChatClients.OPENROUTER_BASE_URL`
+     * 처럼 상수 선택이 `provider(...)` 안에 박혀 있었는데, 테스트가 전부
+     * `baseUrlOverride` 를 채워서 호출했기 때문에 `?:` 가 항상 override 로
+     * 단락(short-circuit)되어 그 상수 자체는 한 번도 평가되지 않았다 — 리뷰어가
+     * openrouter 분기의 상수를 `OPENAI_BASE_URL` 로 바꿔도 전체 스위트가 그린으로
+     * 남은 이유다. `defaultBaseUrl(...)` 을 override 없이 직접 부르면 이 상수
+     * 선택 자체가 테스트 대상이 된다.
+     *
+     * "openai"/"openrouter" 외의 이름은 `provider(...)` 의 `when(name)` 이 이
+     * 함수를 부르기 전에 이미 갈라낸다(anthropic 은 `fromEnv()`, 그 외 이름은
+     * 위에서 바로 `error()`). 그래도 이 함수가 독립적으로 테스트되는 이상, 모르는
+     * 이름을 아무 URL 로 조용히 떨어뜨리는 대신 즉시 죽는다 — 있어선 안 되는
+     * 호출이 있어선 안 되는 채로 조용히 넘어가지 않게 한다.
+     */
+    internal fun defaultBaseUrl(providerName: String): String =
+        when (providerName) {
+            "openai" -> ChatClients.OPENAI_BASE_URL
+            "openrouter" -> ChatClients.OPENROUTER_BASE_URL
+            else -> error("defaultBaseUrl has no default for '$providerName' (expected openai or openrouter)")
         }
 
     /**

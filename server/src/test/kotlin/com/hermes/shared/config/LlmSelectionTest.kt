@@ -106,6 +106,36 @@ class LlmSelectionTest {
     }
 
     @Test
+    fun `기본 baseUrl 은 openai 와 openrouter 상수를 각각 가리킨다`() {
+        // 위 e2e 캡처 테스트 두 개(anthropic/openai/openrouter 전부)는 baseUrlOverride 를
+        // 항상 채워서 LlmSelection.provider(...) 를 부른다 — 루프백 엔드포인트로
+        // 나가는 바이트를 봐야 하니 override 없이는 테스트를 쓸 수가 없다. 그런데
+        // `baseUrlOverride ?: defaultBaseUrl(name)` 에서 override 가 항상 채워져
+        // 있으면 `?:` 가 항상 override 로 단락(short-circuit)되어 `defaultBaseUrl(...)`
+        // 자체는 그 테스트들 안에서 한 번도 평가되지 않는다 — 실제로 리뷰어가
+        // openrouter 분기의 상수를 OPENAI_BASE_URL 로 바꿔도 기존 e2e 테스트가
+        // 전부 그린으로 남았다. 여기서는 override 를 아예 주지 않고
+        // `defaultBaseUrl(...)` 을 직접 불러, "override 가 없을 때 실제로 어느
+        // 상수가 선택되는가"라는 물음 자체를 테스트 대상으로 만든다.
+        assertThat(LlmSelection.defaultBaseUrl("openai")).isEqualTo(ChatClients.OPENAI_BASE_URL)
+        assertThat(LlmSelection.defaultBaseUrl("openrouter")).isEqualTo(ChatClients.OPENROUTER_BASE_URL)
+    }
+
+    @Test
+    fun `기본 baseUrl 은 openai openrouter 가 아닌 이름에는 조용히 떨어지지 않는다`() {
+        // provider(...) 의 when(name) 은 "openai"/"openrouter" 일 때만
+        // defaultBaseUrl(...) 을 부른다 — anthropic 은 fromEnv() 를 쓰고, 그 외
+        // 이름은 provider(...) 자체가 이미 error() 로 죽는다. 그래서 이 함수가
+        // 다른 이름으로 불릴 일은 지금 없다. 하지만 defaultBaseUrl 을 독립적으로
+        // 테스트할 수 있게 뽑아낸 이상, "있어선 안 되는 호출"을 조용히 아무
+        // URL 로 떨어뜨리는 대신 즉시 죽는 쪽을 택했다 — 나중에 세 번째 분기가
+        // 실수로 이 함수를 재사용해도 잘못된 기본값을 조용히 받는 대신 바로
+        // 드러난다.
+        assertThatThrownBy { LlmSelection.defaultBaseUrl("anthropic") }
+            .hasMessageContaining("anthropic")
+    }
+
+    @Test
     fun `openai 도 Spring AI 로 돈다`() {
         val provider = LlmSelection.provider("openai", "gpt-4o", { "key" })
 
