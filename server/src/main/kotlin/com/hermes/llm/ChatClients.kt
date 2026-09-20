@@ -20,7 +20,7 @@ import org.springframework.ai.openai.OpenAiChatOptions
  * `buildParams` 가 순수 함수인 것과 같은 이유다. 캐시 분기점과 스키마 강제가
  * 살아 있는지는 키 없이 검사할 수 있어야 한다(ChatClientsTest).
  */
-object ChatClients {
+internal object ChatClients {
 
     // `/v1`이 baseUrl 쪽에 붙는다 — SDK 접미사가 아니다. `openai-java-core`의
     // `OpenAiSetup`을 javap 로 까 보면 그 안의 기본값 자체가
