@@ -70,7 +70,19 @@ fun main(args: Array<String>) {
     // 한 번 겪은 일이다.
     val model = when (providerName) {
         "anthropic" -> System.getenv("ANTHROPIC_MODEL") ?: "claude-opus-5"
-        "openrouter" -> System.getenv("OPENROUTER_MODEL") ?: "nvidia/nemotron-nano-9b-v2:free"
+        // 기본값을 두지 않는다. 여기 있던 `nvidia/nemotron-nano-9b-v2:free` 는
+        // 상류에서 내려가 이제 404 로 돌아온다 — 기본값이 있는 채로 죽으면
+        // "설정한 적 없는 모델"이 실패의 원인이라는 사실이 로그 어디에도 안
+        // 보인다. 다른 무료 모델로 갈아 끼워도 같은 방식으로 다시 썩으므로,
+        // 잴 모델을 부르는 쪽이 이름으로 말하게 한다.
+        "openrouter" -> System.getenv("OPENROUTER_MODEL")?.takeIf { it.isNotBlank() }
+            ?: error(
+                "OPENROUTER_MODEL is not set (or is empty) — the openrouter provider has no " +
+                    "default model. The previous default (nvidia/nemotron-nano-9b-v2:free) was " +
+                    "withdrawn upstream and now 404s, and any free-tier substitute would rot the " +
+                    "same way, so name the model you mean to measure: " +
+                    "./gradlew eval --args=\"openrouter 5\" with OPENROUTER_MODEL=<model> in .env.",
+            )
         "openai" -> System.getenv("OPENAI_MODEL") ?: "gpt-4o-mini"
         else -> error("unknown provider: $providerName (expected anthropic, openrouter, or openai)")
     }
