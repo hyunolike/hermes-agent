@@ -13,7 +13,7 @@
 ![Java](https://img.shields.io/badge/JDK-21-ED8B00?logo=openjdk&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.0-6DB33F?logo=springboot&logoColor=white)
 ![Gradle](https://img.shields.io/badge/Gradle-Kotlin%20DSL-02303A?logo=gradle&logoColor=white)
-![Anthropic](https://img.shields.io/badge/Anthropic-Java%20SDK%202.34.0-D97757?logo=anthropic&logoColor=white)
+![Spring AI](https://img.shields.io/badge/Spring%20AI-2.0.1-6DB33F?logo=springboot&logoColor=white)
 
 [한국어](./README.md) · **English**
 
@@ -59,6 +59,8 @@ An evaluation that costs money and is non-deterministic is not a unit test. It l
 
 The `ExplanationProvider` port exists for exactly one reason: to compare a direct Anthropic call against OpenRouter's free tier **under the same prompt and the same validation**. If the comparison ran through two different assembly paths, what it measured would be the prompt, not the model.
 
+After moving provider assembly to Spring AI, this repository re-measured the deployed model (`gpt-4o`, 5 runs) on the new path — the forbidden-behaviour rates still came back at 0%. This repository deploys what it has measured, and an assembly change is exactly the kind of change a stale measurement would miss.
+
 <br/>
 
 ## 🔀 Explanation Request Flow
@@ -74,9 +76,9 @@ flowchart TD
     C --> G["ExplanationService.explain()"]
     F --> G
 
-    G --> H{"ExplanationProvider"}
-    H -->|"Anthropic<br/>1h cache + structured output"| I["ProviderResult"]
-    H -->|"OpenRouter<br/>schema forced via tool_choice"| I
+    G --> H{"SpringAiExplanationProvider"}
+    H -->|"anthropic<br/>SDK-derived schema + 1h cache"| I["ProviderResult"]
+    H -->|"openai · openrouter<br/>schema forced via response_format"| I
 
     I -->|Refused| X["Unavailable(reason)"]
     I -->|Failed| X
@@ -92,14 +94,15 @@ flowchart TD
 
 `GET /attractions/{id}` is dropped during normalization — its only unique field, `area`, is never used by an explanation, so the spec cut the call itself.
 
-The two providers differ only inside their adapters.
+There is one adapter (`SpringAiExplanationProvider`). Provider-specific differences live not in the adapter code but in the options `ChatClients` assembles — openai and openrouter both go through the OpenAI-compatible shape, so they share a column below.
 
-| | Anthropic | OpenRouter |
+| | anthropic | openai · openrouter |
 | --- | --- | --- |
-| Output contract | SDK derives the schema from the `Explanation` type | A single function call forced via `tool_choice` |
-| Caching | 1-hour TTL cache breakpoint on the `system` block | None — a free tier has no cost to lower |
-| Refusals | `stop_reason=refusal` branched **before** reading `content` | Judged from the HTTP status code |
-| What it spends | Tokens | Latency and one rate-limit slot |
+| Output contract | SDK derives the schema from the `Explanation` type | Schema forced via `response_format: json_schema` |
+| Caching | 1-hour TTL cache breakpoint on the `system` block | None — a free tier has no cost to lower, and the openai path does not turn on caching either |
+| What it spends | Tokens | openai: tokens / openrouter: latency and one rate-limit slot |
+
+Refusal handling (`stop_reason=refusal` branched **before** reading `content`) is logic all three providers share inside `SpringAiExplanationProvider` itself, so it is no longer a per-provider difference.
 
 <br/>
 
@@ -127,7 +130,7 @@ Each one is a claim the policy documents (`decisions/keep-llm-out-of-ranking.md`
 | Language · Runtime | Kotlin 2.2.21, JVM Toolchain 21 |
 | Framework | Spring Boot 4.1.0 |
 | Build | Gradle (Kotlin DSL), single module with a separate `harness` source set |
-| LLM | Anthropic Java SDK 2.34.0 (`claude-opus-5`), OpenRouter Chat Completions via `java.net.http.HttpClient` |
+| LLM | Spring AI 2.0.1 (`spring-ai-anthropic`, `spring-ai-openai`) over Anthropic Java SDK 2.52.0 (`claude-opus-5`) · OpenAI Java SDK 4.49.0 (shared by openai and openrouter) |
 | Serialization | Jackson (`jackson-module-kotlin`) |
 | Testing | JUnit 5 (`spring-boot-starter-test`) |
 
@@ -147,7 +150,7 @@ Each one is a claim the policy documents (`decisions/keep-llm-out-of-ranking.md`
 ./gradlew test    # unit tests only
 ```
 
-Unit tests never touch the network. A fake stands in for `ExplanationProvider`, and the request-shape tests inspect the parameters (and the OpenRouter request body) the builders produce instead of making a call.
+Unit tests never touch the network. A fake stands in for `ExplanationProvider`, and the request-shape tests intercept the actual request bytes going out to a loopback endpoint instead of making a call (both the anthropic and the OpenAI-compatible path).
 
 ### Run the evaluation
 
@@ -212,8 +215,8 @@ hermes-agent
 │   │   └── ExplanationService.kt # Explained | Unavailable
 │   ├── llm/              # provider adapters
 │   │   ├── ExplanationProvider.kt        # the swap point (port)
-│   │   ├── AnthropicExplanationProvider.kt
-│   │   └── OpenRouterExplanationProvider.kt
+│   │   ├── SpringAiExplanationProvider.kt# the single implementation behind the port
+│   │   └── ChatClients.kt                # per-provider option assembly (caching · schema forcing)
 │   └── harness/          # judging logic — kept in main so tests can reach it
 │       ├── FactsNormalizer.kt     # backend responses → flat facts
 │       ├── ForbiddenBehaviours.kt # judges the six behaviours
