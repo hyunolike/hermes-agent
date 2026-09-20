@@ -1108,14 +1108,18 @@ git rm server/src/main/kotlin/com/hermes/llm/AnthropicExplanationProvider.kt \
        server/src/test/kotlin/com/hermes/llm/RawParams.kt
 ```
 
-Task 7 Step 6 에서 OpenRouter 가 정상이었으면 함께 지운다:
+OpenAI 호환 프로바이더도 함께 지운다 — **조건부가 아니라 확정이다(Ruling R18).**
 
 ```bash
 git rm server/src/main/kotlin/com/hermes/llm/OpenAiCompatibleExplanationProvider.kt \
        server/src/test/kotlin/com/hermes/llm/OpenAiCompatibleRequestShapeTest.kt
 ```
 
-OpenRouter 를 `tool_choice` 로 되살리기로 했으면 이 둘은 **남긴다.**
+계획이 열어 둔 "OpenRouter 가 깨지면 남긴다" 분기의 전제는 *무료 티어가
+`json_schema` 를 거부한다* 였다. 측정이 그것을 반증했다 — 실제 관측된 것은 기본
+모델의 404, 교체 모델의 `choices is not set` 4/5, 그리고 영문 enum 라벨이다. 전부
+무료 티어 모델의 문제지 조립 경로의 문제가 아니고, 구 프로바이더를 남겨도 하나도
+해결되지 않는다.
 
 - [ ] **Step 4: 의존성이 제자리에 있는지 확인한다 (지우지 않는다)**
 
@@ -1133,8 +1137,19 @@ OpenRouter 를 `tool_choice` 로 되살리기로 했으면 이 둘은 **남긴�
 Run: `./gradlew build`
 Expected: BUILD SUCCESSFUL
 
-Run: `./gradlew eval --args="openai 3"`
-Expected: 위반율 8종이 0% 유지. 삭제가 배선을 건드리지 않았음을 확인한다. (돈이 든다.)
+Run: `OPENAI_MODEL=gpt-4o ./gradlew eval --args="openai 5"`
+Expected: 실행이 끝나고 8종 숫자가 나온다. (돈이 든다. 이 태스크의 유일한 유료 실행이다.)
+
+이 한 번이 두 가지를 동시에 한다.
+
+1. **삭제가 배선을 건드리지 않았는지** — 구 프로바이더를 지운 뒤에도 openai 경로가 끝까지 돈다
+2. **운영 모델을 처음으로 잰다** — 지금까지 하네스가 잰 것은 기본값 `gpt-4o-mini` 인데
+   `docs/deploy.md` 의 운영 모델은 `gpt-4o` 다. 조립 경로가 바뀐 뒤 운영 모델을 한 번도
+   안 재고 띄우면 "잰 것을 띄운다"가 깨진다
+
+숫자가 무엇이든 **그대로 기록한다.** 0% 가 아니어도 그것이 이 모델의 실측값이다.
+`UNCITED_CLAIM` 이 나오면 그것은 인용 검증기가 환각 인용을 거부한 실행이라는 뜻이지
+방어선이 뚫린 것이 아니다 — `Explained` 경로에서는 구조적으로 발생하지 않는다.
 
 - [ ] **Step 6: 커밋**
 
