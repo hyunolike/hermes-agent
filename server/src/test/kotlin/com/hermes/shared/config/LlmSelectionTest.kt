@@ -85,6 +85,27 @@ class LlmSelectionTest {
     }
 
     @Test
+    fun `LlmSelection 이 고른 openrouter 프로바이더가 v1 chat completions 로 지정한 모델을 싣는다`() {
+        // openai 쪽 바로 위 테스트의 짝이다. 지금까지 "openrouter" 분기는
+        // `openrouter 를 고를 수 있다`/`openrouter 도 Spring AI 로 돈다` 처럼
+        // provider.name 만 확인했지, LlmSelection.provider(...) 를 통해 실제로
+        // 나가는 바이트는 아무것도 본 적이 없다 — 리뷰어가 이 분기를
+        // OPENAI_BASE_URL 로 바꿔도 스위트가 그대로 초록이었다. 여기서는
+        // openai 와 같은 방식으로 루프백 엔드포인트로 나가는 경로와 모델을
+        // 직접 본다.
+        CapturingEndpoint().use { endpoint ->
+            val baseUrl = "${endpoint.baseUrl}/v1"
+            val provider = LlmSelection.provider("openrouter", "x/y", { "key" }, baseUrl)
+
+            provider.explain("system", "user")
+
+            assertThat(endpoint.capturedPath()).isEqualTo("/v1/chat/completions")
+            val body = endpoint.capturedBody()
+            assertThat(body["model"].asText()).isEqualTo("x/y")
+        }
+    }
+
+    @Test
     fun `openai 도 Spring AI 로 돈다`() {
         val provider = LlmSelection.provider("openai", "gpt-4o", { "key" })
 

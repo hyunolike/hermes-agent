@@ -176,6 +176,45 @@ class SpringAiRequestShapeTest {
     }
 
     @Test
+    fun `openai 호환 요청도 번들과 사실이 그대로 실린다`() {
+        // anthropic 쪽은 `번들은 system 블록에...`/`매 요청 달라지는 사실은...`
+        // 두 테스트가 이미 고정한다. openai 호환 경로는 지금까지 model/baseUrl/
+        // response_format 만 봤지 systemText/factsJson 이 실제로 온전히 실리는지는
+        // 아무 테스트도 안 봤다 — 리뷰어가 SpringAiExplanationProvider.explain 의
+        // openai 분기에서 userText 를 하드코딩해도 전체 스위트가 그린으로
+        // 남았다. 운영이 도는 쪽이 openai 인데 그쪽이 anthropic 보다 약하게
+        // 고정돼 있던 것을 여기서 닫는다.
+        CapturingEndpoint().use { endpoint ->
+            val baseUrl = "${endpoint.baseUrl}/v1"
+
+            openAiProvider(baseUrl).explain(systemText, factsJson)
+
+            val body = endpoint.capturedBody()
+            assertThat(body["messages"]).hasSize(2)
+            assertThat(body["messages"][0]["role"].asText()).isEqualTo("system")
+            assertThat(body["messages"][0]["content"].asText()).isEqualTo(systemText)
+            assertThat(body["messages"][1]["role"].asText()).isEqualTo("user")
+            assertThat(body["messages"][1]["content"].asText()).isEqualTo(factsJson)
+        }
+    }
+
+    @Test
+    fun `openai 호환도 같은 입력이면 요청 본문이 바이트까지 완전히 같다`() {
+        // anthropic 쪽 `같은 입력이면 요청 본문이 바이트까지 완전히 같다` 의 짝이다.
+        // openai 호환 경로에는 캐시 분기점이 없지만, "같은 입력이면 같은 바이트가
+        // 나간다"는 여전히 회귀 하네스가 비교를 정직하게 하기 위한 전제다 — 매
+        // 실행마다 본문이 흔들리면 "같은 프롬프트로 비교했다"는 주장 자체가
+        // 무너진다.
+        fun capture(): String = CapturingEndpoint().use { endpoint ->
+            val baseUrl = "${endpoint.baseUrl}/v1"
+            openAiProvider(baseUrl).explain(systemText, factsJson)
+            endpoint.capturedBody().toString()
+        }
+
+        assertThat(capture()).isEqualTo(capture())
+    }
+
+    @Test
     fun `OPENAI_BASE_URL 과 OPENROUTER_BASE_URL 은 이미 v1 을 지닌다`() {
         // 위 테스트는 SDK 쪽 절반("baseUrl 뒤에 chat completions 만 붙는다")만
         // 고정한다. 이 상수 자체가 /v1 을 안 지니면(예: 예전처럼
