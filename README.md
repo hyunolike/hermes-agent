@@ -13,7 +13,7 @@
 ![Java](https://img.shields.io/badge/JDK-21-ED8B00?logo=openjdk&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.0-6DB33F?logo=springboot&logoColor=white)
 ![Gradle](https://img.shields.io/badge/Gradle-Kotlin%20DSL-02303A?logo=gradle&logoColor=white)
-![Anthropic](https://img.shields.io/badge/Anthropic-Java%20SDK%202.34.0-D97757?logo=anthropic&logoColor=white)
+![Spring AI](https://img.shields.io/badge/Spring%20AI-2.0.1-6DB33F?logo=springboot&logoColor=white)
 
 **한국어** · [English](./README.en.md)
 
@@ -59,6 +59,8 @@
 
 `ExplanationProvider` 포트가 존재하는 이유는 하나입니다. Anthropic 직접 호출과 OpenRouter 무료 티어를 **같은 프롬프트와 같은 검증** 아래에서 비교하기 위해서입니다. 비교가 서로 다른 조립 경로를 타면 측정되는 것은 모델이 아니라 프롬프트가 됩니다.
 
+포트 뒤의 구현은 Spring AI 어댑터 하나이고, 프로바이더별 차이는 `ChatClients` 의 옵션 조립으로만 나타납니다. 포트를 남긴 이유는 그대로입니다 — 비교의 공정성이 프레임워크가 아니라 이 저장소 코드에 있어야 합니다.
+
 운영 서버도 같은 세 이름으로 고릅니다(`HERMES_LLM_PROVIDER`). 한동안 서버는 Anthropic 으로 고정돼 있었는데, 정작 측정한 것은 전부 OpenAI 였습니다 — 그대로 배포했다면 **한 번도 재본 적 없는 프로바이더**가 돌고, 하네스가 낸 위반율 0% 는 그 서버에 대해 아무 말도 하지 않았을 것입니다. 잰 것을 그대로 띄울 수 있어야 그 숫자가 서버의 숫자가 됩니다.
 
 ### 5. 화면 둘 — 설명과 근거를 나란히
@@ -82,9 +84,9 @@ flowchart TD
     C --> G["ExplanationService.explain()"]
     F --> G
 
-    G --> H{"ExplanationProvider"}
-    H -->|"Anthropic<br/>1h 캐시 + 구조화 출력"| I["ProviderResult"]
-    H -->|"OpenRouter<br/>tool_choice로 스키마 강제"| I
+    G --> H{"SpringAiExplanationProvider"}
+    H -->|"anthropic<br/>SDK 유도 스키마 + 1h 캐시"| I["ProviderResult"]
+    H -->|"openai · openrouter<br/>response_format 으로 스키마 강제"| I
 
     I -->|Refused| X["Unavailable(거절 사유)"]
     I -->|Failed| X
@@ -100,14 +102,15 @@ flowchart TD
 
 `GET /attractions/{id}` 는 정규화 단계에서 빠집니다 — 이 응답의 유일하게 고유한 필드인 `area` 를 설명이 쓰지 않으므로 스펙이 이 호출 자체를 쳐냈습니다.
 
-두 프로바이더의 차이는 어댑터 안에만 있습니다.
+어댑터는 하나입니다(`SpringAiExplanationProvider`). 프로바이더별 차이는 어댑터 코드가 아니라 `ChatClients`가 조립하는 옵션에만 있습니다 — openai와 openrouter는 둘 다 OpenAI 호환 규격을 타므로 이 표에서는 한 열로 묶입니다.
 
-| | Anthropic | OpenRouter |
+| | anthropic | openai · openrouter |
 | --- | --- | --- |
-| 출력 계약 | SDK가 `Explanation` 타입에서 스키마를 직접 유도 | `tool_choice`로 단일 함수 호출을 강제 |
-| 캐시 | `system` 블록에 1시간 TTL 캐시 브레이크포인트 | 없음 — 무료 티어에는 낮출 비용이 없다 |
-| 거절 처리 | `stop_reason=refusal`을 `content` 읽기 **전에** 분기 | HTTP 상태 코드로 판정 |
-| 비용이 아닌 대가 | 토큰 | 지연 + 레이트리밋 한 칸 |
+| 출력 계약 | SDK가 `Explanation` 타입에서 스키마를 직접 유도 | `response_format: json_schema`로 스키마를 강제 |
+| 캐시 | `system` 블록에 1시간 TTL 캐시 브레이크포인트 | 없음 — openrouter 무료 티어에는 낮출 비용이 없고, openai 경로도 아직 캐시를 켜지 않았다 |
+| 비용이 아닌 대가 | 토큰 | openai: 토큰 / openrouter: 지연 + 레이트리밋 한 칸 |
+
+거절 판정(`stop_reason=refusal`을 `content` 읽기 **전에** 가르는 것)은 세 프로바이더가 공유하는 `SpringAiExplanationProvider` 자체의 로직이라 더는 프로바이더별 차이가 아닙니다.
 
 <br/>
 
@@ -137,7 +140,7 @@ flowchart TD
 | 언어 · 런타임 | Kotlin 2.2.21, JVM Toolchain 21 |
 | 프레임워크 | Spring Boot 4.1.0 |
 | 빌드 | Gradle (Kotlin DSL), 단일 모듈 + 분리된 `harness` 소스셋 |
-| LLM | Anthropic Java SDK 2.34.0 (`claude-opus-5`), OpenRouter Chat Completions (`java.net.http.HttpClient`) |
+| LLM | Spring AI 2.0.1 (`spring-ai-anthropic`, `spring-ai-openai`) 위에 Anthropic Java SDK 2.52.0 (`claude-opus-5`) · OpenAI Java SDK 4.49.0 (openai·openrouter 공용) |
 | 직렬화 | Jackson (`jackson-module-kotlin`) |
 | 테스트 | JUnit 5 (`spring-boot-starter-test`) |
 
@@ -157,7 +160,7 @@ flowchart TD
 ./gradlew test    # 단위 테스트만
 ```
 
-단위 테스트는 네트워크를 타지 않습니다. 페이크 프로바이더가 `ExplanationProvider` 자리를 대신하고, 요청 모양 검증은 실제 호출 없이 빌더가 만든 파라미터(와 OpenRouter 요청 바디)를 직접 들여다봅니다.
+단위 테스트는 네트워크를 타지 않습니다. 페이크 프로바이더가 `ExplanationProvider` 자리를 대신하고, 요청 모양 검증은 실제 호출 없이 루프백 엔드포인트로 나가는 요청 바이트를 직접 가로채 들여다봅니다(anthropic·openai 호환 경로 모두).
 
 ### 평가 실행
 
@@ -266,6 +269,8 @@ judge model : gpt-4o
 
 **위반율은 두 모델을 가르지 못합니다.** 가르는 것은 규칙이 못 보는 축입니다. 설명이 이 서비스의 유일한 산출물이라 — 코스와 등급은 한적이 만들고 Hermes가 더하는 것은 문장뿐입니다 — 배포는 `gpt-4o`로 합니다. 근거와 한계는 위키의 [`decisions/choose-explanation-model.md`](https://github.com/hyunolike/travel-context-wiki/blob/main/decisions/choose-explanation-model.md)에 있습니다.
 
+프로바이더 조립을 Spring AI로 옮긴 뒤 같은 조합(`gpt-4o`, 5회)을 새 경로에서 다시 쟀습니다 — 규칙 위반 8종은 여전히 전부 0%였습니다. 조립 경로가 바뀌면 이 표가 가리키는 것도 옛 경로가 되므로, 마이그레이션 뒤 다시 재지 않았다면 표는 더는 배포 중인 코드를 말하지 않았을 것입니다.
+
 > ⚠️ **판정은 실행당 LLM 호출을 하나 더 씁니다(비용 2배).** `JUDGE_MODEL`을 넣는 행위가 그 비용에 대한 동의입니다. 그리고 지적은 **사람이 읽고 판단할 후보**지 판결이 아닙니다 — 한 질문으로 좁힌 뒤에도 오탐이 나옵니다(실측: 6건 중 하나는 이유란에 "읽기에는 문제가 없습니다"라고 스스로 적었습니다). `gpt-4o-mini`는 판정자로 쓰기에 약합니다.
 
 <br/>
@@ -285,8 +290,8 @@ hermes-agent
 │   │   └── ExplanationService.kt # Explained | Unavailable
 │   ├── llm/              # 프로바이더 어댑터
 │   │   ├── ExplanationProvider.kt        # 교체 지점(포트)
-│   │   ├── AnthropicExplanationProvider.kt
-│   │   └── OpenRouterExplanationProvider.kt
+│   │   ├── SpringAiExplanationProvider.kt# 포트 뒤의 단일 구현
+│   │   └── ChatClients.kt                # 프로바이더별 옵션 조립(캐시·스키마 강제)
 │   └── harness/          # 판정 로직 — 테스트가 닿도록 main 에 둔다
 │       ├── FactsNormalizer.kt    # 백엔드 응답 → 평평한 facts
 │       ├── ForbiddenBehaviours.kt# 금지 행동 8종 판정

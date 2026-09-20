@@ -15,7 +15,7 @@
 | --- | --- | --- | --- |
 | `HANJEOK_BASE_URL` | **예** | 없음 | 한적 백엔드 주소. 기본값을 두지 않는다 — 빠뜨리면 기동이 이름을 지목하며 실패한다 |
 | `HERMES_LLM_PROVIDER` | 아니오 | `anthropic` | `anthropic` · `openai` · `openrouter`. 하네스 `./gradlew eval <이름>`과 같은 이름이다 |
-| `HERMES_LLM_MODEL` | 아니오 | `claude-opus-5` | 프로바이더에 맞는 모델 이름 |
+| `HERMES_LLM_MODEL` | 아니오 | `claude-opus-5` | 프로바이더에 맞는 모델 이름. **세 프로바이더 모두 이 값을 따른다** — 이전에는 anthropic 만 이 값을 무시하고 코드에 박힌 모델로 돌았다 |
 | `ANTHROPIC_API_KEY` | 조건부 | 없음 | `provider=anthropic`일 때. 없으면 서버는 뜨지만 `/actuator/health`가 DOWN |
 | `OPENAI_API_KEY` | 조건부 | 없음 | `provider=openai`일 때. 없으면 **기동이 멈춘다** |
 | `OPENROUTER_API_KEY` | 조건부 | 없음 | `provider=openrouter`일 때. 없으면 기동이 멈춘다 |
