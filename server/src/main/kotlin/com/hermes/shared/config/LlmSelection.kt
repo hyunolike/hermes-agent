@@ -68,17 +68,23 @@ object LlmSelection {
                         .build(),
                 ),
             )
+            // 두 분기 다 `defaultBaseUrl(name)` 을 부른다. 예전처럼 분기마다
+            // 리터럴을 따로 타이핑하면(`defaultBaseUrl("openai")`) 그 둘을
+            // 맞바꿔도 컴파일되고 스위트도 그린으로 남는다 — 캡처 테스트가 전부
+            // `baseUrlOverride` 를 채워 `?:` 를 단락시키기 때문이다. `name` 을
+            // 넘기면 맞바꿀 두 번째 문자열이 아예 없다 — 이 분기가 돌았다는
+            // 사실 자체가 `name` 값을 확정한다.
             "openai" -> springAiOpenAiCompatible(
                 name = "openai",
                 apiKey = require(env, "OPENAI_API_KEY"),
                 model = model,
-                baseUrl = baseUrlOverride ?: defaultBaseUrl("openai"),
+                baseUrl = baseUrlOverride ?: defaultBaseUrl(name),
             )
             "openrouter" -> springAiOpenAiCompatible(
                 name = "openrouter",
                 apiKey = require(env, "OPENROUTER_API_KEY"),
                 model = model,
-                baseUrl = baseUrlOverride ?: defaultBaseUrl("openrouter"),
+                baseUrl = baseUrlOverride ?: defaultBaseUrl(name),
             )
             else -> error(
                 "unknown hermes.llm.provider: '$name' (expected anthropic, openai, or openrouter)",
