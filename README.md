@@ -174,6 +174,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 
 # OpenRouter 무료 티어와 비교
 export OPENROUTER_API_KEY=sk-or-...
+export OPENROUTER_MODEL=...   # 기본값 없음 — 아직 살아 있는 모델을 직접 적습니다
 ./gradlew eval --args="openrouter 5"
 
 # 픽스처가 아니라 한적의 실제 코스로 잰다
@@ -187,7 +188,7 @@ HANJEOK_BASE_URL=https://api.hanjeok.com \
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | `anthropic` 프로바이더 | — |
 | `OPENROUTER_API_KEY` | `openrouter` 프로바이더 | — |
-| `OPENROUTER_MODEL` | `openrouter` 프로바이더 | `nvidia/nemotron-nano-9b-v2:free` |
+| `OPENROUTER_MODEL` | `openrouter` 프로바이더 | 없음 — **직접 지정해야 합니다.** 기본값이던 `nvidia/nemotron-nano-9b-v2:free`가 상류에서 내려가 404를 냅니다 |
 | `OPENAI_API_KEY` | `openai` 프로바이더, 그리고 품질 판정 | — |
 | `OPENAI_MODEL` | `openai` 프로바이더 | `gpt-4o-mini` |
 | `JUDGE_MODEL` | 품질 판정 — **넣어야만 켜집니다** | 없음(판정 안 함) |
@@ -216,7 +217,7 @@ violations  : rate = runs-with-violation / explained (NOT /runs); occurrences = 
 숫자 두 개가 분모를 공유하지 않는다는 점이 중요합니다.
 
 - **`rate`의 분모는 `runs`가 아니라 `explained`입니다.** `Refused`·`Failed`·인용 무효로 끝난 실행에는 점검할 설명 텍스트 자체가 없습니다. 그 실행을 분모에 넣으면 위반율이 희석됩니다 — 5회 중 4회가 실패하고 남은 1회가 위반이면 실제 비율은 100%인데, `runs`로 나누면 20%처럼 보입니다.
-- **`occurrences`는 원시 발생 횟수입니다.** `INVENTED_PLACE`는 한 실행에서 지어낸 이름을 여러 개 낼 수 있어 이 값이 실행 수를 넘을 수 있습니다. 나머지 다섯은 실행당 최대 1건입니다.
+- **`occurrences`는 원시 발생 횟수입니다.** `INVENTED_PLACE`와 `GRADE_MISLABEL`은 한 실행에서 여러 건이 나올 수 있어 이 값이 실행 수를 넘을 수 있습니다. 나머지 여섯은 실행당 최대 1건입니다.
 - **`explained == 0`이면 `rate`는 `0.0%`가 아니라 `UNMEASURED`로 찍히고, 프로세스는 종료 코드 1로 끝납니다.** "위반 없음"과 "잴 수 없음"이 같은 숫자로 보이면, 판정기가 다 실패한 실행을 무결점 실행으로 오독하게 됩니다.
 
 <br/>
@@ -269,7 +270,7 @@ judge model : gpt-4o
 
 **위반율은 두 모델을 가르지 못합니다.** 가르는 것은 규칙이 못 보는 축입니다. 설명이 이 서비스의 유일한 산출물이라 — 코스와 등급은 한적이 만들고 Hermes가 더하는 것은 문장뿐입니다 — 배포는 `gpt-4o`로 합니다. 근거와 한계는 위키의 [`decisions/choose-explanation-model.md`](https://github.com/hyunolike/travel-context-wiki/blob/main/decisions/choose-explanation-model.md)에 있습니다.
 
-프로바이더 조립을 Spring AI로 옮긴 뒤 같은 조합(`gpt-4o`, 5회)을 새 경로에서 다시 쟀습니다 — 규칙 위반 8종은 여전히 전부 0%였습니다. 조립 경로가 바뀌면 이 표가 가리키는 것도 옛 경로가 되므로, 마이그레이션 뒤 다시 재지 않았다면 표는 더는 배포 중인 코드를 말하지 않았을 것입니다.
+프로바이더 조립을 Spring AI로 옮긴 뒤 같은 조합(`gpt-4o`, 5회)을 새 경로에서 다시 쟀습니다. 하네스가 찍은 값은 `REORDERED_COURSE 20.0% (1/5)`이고 나머지 7종은 0%입니다. 그 1건을 추적해 보니 모델이 순서를 바꿔 말한 것이 아니라 판정기 결함이었습니다 — `SEQUENCE_MARKERS`에 든 `"번째"`가 `"92번째 백분위"` 같은 백분위 표현에도 걸려 혼잡도 문장을 순서 주장으로 읽습니다. 그래서 읽어야 할 값은 8종 전부 0%지만, **그 0%는 하네스가 찍은 숫자가 아니라 사람이 고쳐 읽은 숫자**입니다. 판정기는 아직 고치지 않았으므로 다음 실행도 같은 자리에서 같은 오탐을 냅니다. 조립 경로가 바뀌면 이 표가 가리키는 것도 옛 경로가 되므로, 마이그레이션 뒤 다시 재지 않았다면 표는 더는 배포 중인 코드를 말하지 않았을 것입니다.
 
 > ⚠️ **판정은 실행당 LLM 호출을 하나 더 씁니다(비용 2배).** `JUDGE_MODEL`을 넣는 행위가 그 비용에 대한 동의입니다. 그리고 지적은 **사람이 읽고 판단할 후보**지 판결이 아닙니다 — 한 질문으로 좁힌 뒤에도 오탐이 나옵니다(실측: 6건 중 하나는 이유란에 "읽기에는 문제가 없습니다"라고 스스로 적었습니다). `gpt-4o-mini`는 판정자로 쓰기에 약합니다.
 

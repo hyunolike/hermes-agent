@@ -37,7 +37,7 @@ What is left is answering **"why this place, why today, why in this order?"**
 
 `hermes-agent` answers those questions using nothing but the **facts the backend returned** and a **preserved evidence bundle**. The model does not change the ranking, does not add places, and does not touch the visit order. Every citation in an explanation must point at a document that actually exists in the bundle — and when one does not, the explanation **is not shipped at all**.
 
-None of this is verified by eye. An evaluation harness counts **six forbidden behaviours** and leaves the result as numbers.
+None of this is verified by eye. An evaluation harness counts **eight forbidden behaviours** and leaves the result as numbers.
 
 <br/>
 
@@ -51,15 +51,15 @@ A single bundle assembled from nine documents (`server/src/main/resources/prompt
 
 The citation chips in the UI open a copy of the bundle. A path that is not in the bundle means a 404 for the user. `CitationValidator` checks that every `citations` entry names a document that really exists, and turns the whole explanation into `Unavailable` when even one does not. **No explanation is the safe failure.**
 
-### 3. A harness for the six forbidden behaviours
+### 3. A harness for the eight forbidden behaviours
 
-An evaluation that costs money and is non-deterministic is not a unit test. It lives in a `harness` source set kept strictly out of `./gradlew test`, calls the real API, and counts how often the model crossed each of the six lines it must not cross.
+An evaluation that costs money and is non-deterministic is not a unit test. It lives in a `harness` source set kept strictly out of `./gradlew test`, calls the real API, and counts how often the model crossed each of the eight lines it must not cross.
 
 ### 4. Swappable providers — same prompt, same validation
 
 The `ExplanationProvider` port exists for exactly one reason: to compare a direct Anthropic call against OpenRouter's free tier **under the same prompt and the same validation**. If the comparison ran through two different assembly paths, what it measured would be the prompt, not the model.
 
-After moving provider assembly to Spring AI, this repository re-measured the deployed model (`gpt-4o`, 5 runs) on the new path — the forbidden-behaviour rates still came back at 0%. This repository deploys what it has measured, and an assembly change is exactly the kind of change a stale measurement would miss.
+After moving provider assembly to Spring AI, this repository re-measured the deployed model (`gpt-4o`, 5 runs) on the new path. What the harness printed was `REORDERED_COURSE 20.0% (1/5)`, the other seven at 0%. Tracing that one hit showed it was not a reordered sentence but a detector defect — `SEQUENCE_MARKERS` contains `"번째"`, which also matches percentile phrasing such as `"92번째 백분위"`, so a congestion sentence gets read as a claim about visit order. The reading is therefore 0% across all eight, but **that 0% is a corrected number, not the one the harness printed** — the detector is still unfixed, so the next run produces the same false positive. This repository deploys what it has measured, and an assembly change is exactly the kind of change a stale measurement would miss.
 
 <br/>
 
@@ -87,7 +87,7 @@ flowchart TD
     J -->|Invalid| X
     J -->|Valid| K["Explained(text + citations)"]
 
-    K --> L["ForbiddenBehaviours.check()<br/>judge the six behaviours"]
+    K --> L["ForbiddenBehaviours.check()<br/>judge the eight behaviours"]
     X --> M["ViolationTally<br/>runs-with-violation / raw occurrences"]
     L --> M
 ```
@@ -106,7 +106,7 @@ Refusal handling (`stop_reason=refusal` branched **before** reading `content`) i
 
 <br/>
 
-## 🚫 The Six Forbidden Behaviours
+## 🚫 The Eight Forbidden Behaviours
 
 Each one is a claim the policy documents (`decisions/keep-llm-out-of-ranking.md`, `queries/why-this-place-today.md`) forbid, moved verbatim into a checker.
 
@@ -118,6 +118,8 @@ Each one is a claim the policy documents (`decisions/keep-llm-out-of-ranking.md`
 | `UNCITED_CLAIM` | No citations, or a path not in the bundle | The real signal is in `Unavailable.reason` — `ExplanationService` only returns `Explained` when citations are valid |
 | `DEFERRED_DESTINATION` | Claiming the crowded destination was moved later | Only when the destination's name and a deferral phrase sit in the **same sentence** |
 | `TIME_OF_DAY_REASON` | Giving time-of-day crowding as the reason for a visit time | Only when one sentence carries a time-of-day phrase **and** a crowding term **and** a causal connector |
+| `GRADE_MISLABEL` | Mislabelling a congestion grade | A violation when the English enum leaks into the text (`VERY_CROWDED`) or a known literal translation appears (`정상적인 혼잡`, `노멀`). Paraphrases such as `"매우 붐빈다"` are fine |
+| `MISSTATED_ORDER_REASON` | Misstating the purpose of the visit order | Only for a sentence that **claims a purpose** for the order and names one other than minimizing travel time — the single purpose the policy recognizes |
 
 > Judging sentence by sentence matters: treating the whole text as one blob lets unrelated words scattered across different sentences co-occur by accident and produce false positives. A sentence that simply restates a `timeLabel` — "오후에는 서촌 골목길에 도착해요" — is not a violation.
 
@@ -164,6 +166,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 
 # Compare against OpenRouter's free tier
 export OPENROUTER_API_KEY=sk-or-...
+export OPENROUTER_MODEL=...   # no default — name a model that still exists
 ./gradlew eval --args="openrouter 5"
 ```
 
@@ -171,7 +174,7 @@ export OPENROUTER_API_KEY=sk-or-...
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | the `anthropic` provider | — |
 | `OPENROUTER_API_KEY` | the `openrouter` provider | — |
-| `OPENROUTER_MODEL` | the `openrouter` provider | `nvidia/nemotron-nano-9b-v2:free` |
+| `OPENROUTER_MODEL` | the `openrouter` provider | none — **you must name one.** The old default, `nvidia/nemotron-nano-9b-v2:free`, was withdrawn upstream and now 404s |
 
 > ⚠️ **The evaluation calls real APIs.** It costs money and its results are non-deterministic. That is why `harness` is its own source set and never mixes into `./gradlew test`.
 
@@ -195,7 +198,7 @@ violations  : rate = runs-with-violation / explained (NOT /runs); occurrences = 
 The important part is that the two numbers do not share a denominator.
 
 - **`rate` is divided by `explained`, not by `runs`.** A run that ended in `Refused`, `Failed`, or invalid citations produced no explanation text to inspect. Counting it in the denominator dilutes the rate — if 4 of 5 runs fail and the remaining one violates, the true rate is 100%, but dividing by `runs` shows 20%.
-- **`occurrences` is the raw count.** A single run can invent several place names, so `INVENTED_PLACE` may exceed the number of runs. The other five are capped at one per run.
+- **`occurrences` is the raw count.** A single run can invent several place names, and it can mislabel several grades, so `INVENTED_PLACE` and `GRADE_MISLABEL` may exceed the number of runs. The other six are capped at one per run.
 - **When `explained == 0`, `rate` prints `UNMEASURED` rather than `0.0%`, and the process exits with code 1.** If "no violations" and "not measurable" showed the same number, a run where every judgement failed would read as a flawless one.
 
 <br/>
@@ -219,7 +222,7 @@ hermes-agent
 │   │   └── ChatClients.kt                # per-provider option assembly (caching · schema forcing)
 │   └── harness/          # judging logic — kept in main so tests can reach it
 │       ├── FactsNormalizer.kt     # backend responses → flat facts
-│       ├── ForbiddenBehaviours.kt # judges the six behaviours
+│       ├── ForbiddenBehaviours.kt # judges the eight behaviours
 │       └── ViolationTally.kt      # runs-with-violation / raw occurrences
 │
 ├── server/src/main/resources/prompts/hanjeok-bundle.txt   # the evidence bundle (9 documents)
