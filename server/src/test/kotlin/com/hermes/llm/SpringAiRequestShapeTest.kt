@@ -2,14 +2,12 @@ package com.hermes.llm
 
 import com.hermes.context.BundleLoader
 import com.hermes.context.PromptAssembler
+import com.hermes.shared.config.LlmSelection
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.ai.anthropic.AnthropicChatModel
 import org.springframework.ai.chat.client.ChatClient
 import com.anthropic.client.okhttp.AnthropicOkHttpClient
-import com.openai.client.okhttp.OpenAIOkHttpClient
-import com.openai.client.okhttp.OpenAIOkHttpClientAsync
-import org.springframework.ai.openai.OpenAiChatModel
 
 /**
  * 실제로 나가는 요청 본문을 검사한다.
@@ -38,34 +36,14 @@ class SpringAiRequestShapeTest {
     }
 
     // baseUrl 은 이미 /v1 로 끝난 값을 받는다 — 호출부가 endpoint.baseUrl + "/v1" 을 준다.
-    private fun openAiProvider(baseUrl: String, model: String = "gpt-4o"): SpringAiExplanationProvider {
-        val chatModel = OpenAiChatModel.builder()
-            .openAiClient(
-                OpenAIOkHttpClient.builder()
-                    .apiKey("sk-not-a-real-key")
-                    .baseUrl(baseUrl)
-                    .build(),
-            )
-            // openAiClientAsync 없이는 .build() 가 IllegalStateException("At least
-            // one credential source must be specified")으로 죽는다 — 빌더 모양만
-            // 보면 안 보이는 함정이다. .openAiClient(...)(sync)만 주면 sync 필드는
-            // 우리가 준 걸 그대로 쓰지만(javap 로 확인: Objects.requireNonNullElseGet
-            // 이 null 이 아니면 supplier 를 안 부른다), async 필드는 비어 있으면
-            // OpenAiSetup.setupAsyncClient(...)로 기본 클라이언트를 새로 조립하려
-            // 하고 그 조립이 OpenAiChatOptions.getApiKey()를 읽는다.
-            // ChatClients.openAiCompatibleOptions 는 순수 함수라 apiKey 를 모른다 —
-            // 그래서 .call() 만 쓰는 동기 경로여도 빌드 시점에 async 클라이언트가
-            // 필요하다(LlmSelection.springAiOpenAiCompatible 에서 실측 확인).
-            .openAiClientAsync(
-                OpenAIOkHttpClientAsync.builder()
-                    .apiKey("sk-not-a-real-key")
-                    .baseUrl(baseUrl)
-                    .build(),
-            )
-            .options(ChatClients.openAiCompatibleOptions(model, baseUrl))
-            .build()
-        return SpringAiExplanationProvider("openai", ChatClient.create(chatModel))
-    }
+    //
+    // 예전에는 여기서 OpenAiChatModel 을 손으로 다시 조립했다. 그 사본은
+    // `LlmSelection` 이 실제로 하는 배선과 같다는 보장이 없어서, openai 분기의
+    // baseUrl 이 틀려도 이 파일의 단언은 전부 그린이었다 — 실제로 한 번 그렇게
+    // 새어 나갔다. 이제 조립 경로는 운영과 같은 하나뿐이다. `baseUrlOverride` 는
+    // 루프백 엔드포인트로 돌리기 위한 것일 뿐, 그 외에는 운영과 같은 코드가 돈다.
+    private fun openAiProvider(baseUrl: String, model: String = "gpt-4o"): ExplanationProvider =
+        LlmSelection.provider("openai", model, { "sk-not-a-real-key" }, baseUrl)
 
     @Test
     fun `번들은 system 블록에 1시간 캐시 분기점과 함께 들어간다`() {
@@ -172,6 +150,15 @@ class SpringAiRequestShapeTest {
             // 보여준다 — required 만 보면 우연히 이름이 겹쳐도 통과할 수 있다.
             assertThat(schema["properties"].fieldNames().asSequence().toList())
                 .containsExactlyInAnyOrder("explanation", "citations")
+            // strict 가 빠지면 json_schema 는 구속력이 없다 — 모델이 스키마를
+            // 참고만 하고 산문으로 답해도 되고, 그러면 toProviderResult 의
+            // readTree 가 JsonParseException 으로 깨진다. 위의 required/properties
+            // 단언은 그 상태에서도 전부 그린이다(스키마 자체는 그대로 실리므로).
+            // 돈을 쓴 측정 한 번이 통째로 explained=0 으로 끝난 원인이 이것이라,
+            // 나가는 바이트에서 직접 확인한다.
+            assertThat(responseFormat["json_schema"]["strict"].asBoolean())
+                .describedAs("strict 가 없거나 false 면 스키마는 구속력이 없다")
+                .isTrue()
         }
     }
 
