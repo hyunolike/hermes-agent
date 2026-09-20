@@ -37,6 +37,36 @@ class SpringAiRequestShapeTest {
         return SpringAiExplanationProvider("anthropic", ChatClient.create(model))
     }
 
+    // baseUrl 은 이미 /v1 로 끝난 값을 받는다 — 호출부가 endpoint.baseUrl + "/v1" 을 준다.
+    private fun openAiProvider(baseUrl: String, model: String = "gpt-4o"): SpringAiExplanationProvider {
+        val chatModel = OpenAiChatModel.builder()
+            .openAiClient(
+                OpenAIOkHttpClient.builder()
+                    .apiKey("sk-not-a-real-key")
+                    .baseUrl(baseUrl)
+                    .build(),
+            )
+            // openAiClientAsync 없이는 .build() 가 IllegalStateException("At least
+            // one credential source must be specified")으로 죽는다 — 빌더 모양만
+            // 보면 안 보이는 함정이다. .openAiClient(...)(sync)만 주면 sync 필드는
+            // 우리가 준 걸 그대로 쓰지만(javap 로 확인: Objects.requireNonNullElseGet
+            // 이 null 이 아니면 supplier 를 안 부른다), async 필드는 비어 있으면
+            // OpenAiSetup.setupAsyncClient(...)로 기본 클라이언트를 새로 조립하려
+            // 하고 그 조립이 OpenAiChatOptions.getApiKey()를 읽는다.
+            // ChatClients.openAiCompatibleOptions 는 순수 함수라 apiKey 를 모른다 —
+            // 그래서 .call() 만 쓰는 동기 경로여도 빌드 시점에 async 클라이언트가
+            // 필요하다(LlmSelection.springAiOpenAiCompatible 에서 실측 확인).
+            .openAiClientAsync(
+                OpenAIOkHttpClientAsync.builder()
+                    .apiKey("sk-not-a-real-key")
+                    .baseUrl(baseUrl)
+                    .build(),
+            )
+            .options(ChatClients.openAiCompatibleOptions(model, baseUrl))
+            .build()
+        return SpringAiExplanationProvider("openai", ChatClient.create(chatModel))
+    }
+
     @Test
     fun `번들은 system 블록에 1시간 캐시 분기점과 함께 들어간다`() {
         CapturingEndpoint().use { endpoint ->
@@ -91,34 +121,8 @@ class SpringAiRequestShapeTest {
             // 확인). 이 테스트가 그 SDK 쪽 절반을 고정한다 — 루프백 baseUrl 뒤에 /v1 을
             // 직접 붙여서, 실제 나가는 경로가 baseUrl + "/chat/completions" 인지 본다.
             val baseUrl = "${endpoint.baseUrl}/v1"
-            val model = OpenAiChatModel.builder()
-                .openAiClient(
-                    OpenAIOkHttpClient.builder()
-                        .apiKey("sk-not-a-real-key")
-                        .baseUrl(baseUrl)
-                        .build(),
-                )
-                // openAiClientAsync 없이는 .build() 가 IllegalStateException("At least
-                // one credential source must be specified")으로 죽는다 — 빌더 모양만
-                // 보면 안 보이는 함정이다. .openAiClient(...)(sync)만 주면 sync 필드는
-                // 우리가 준 걸 그대로 쓰지만(javap 로 확인: Objects.requireNonNullElseGet
-                // 이 null 이 아니면 supplier 를 안 부른다), async 필드는 비어 있으면
-                // OpenAiSetup.setupAsyncClient(...)로 기본 클라이언트를 새로 조립하려
-                // 하고 그 조립이 OpenAiChatOptions.getApiKey()를 읽는다.
-                // ChatClients.openAiCompatibleOptions 는 순수 함수라 apiKey 를 모른다 —
-                // 그래서 .call() 만 쓰는 동기 경로여도 빌드 시점에 async 클라이언트가
-                // 필요하다(LlmSelection.springAiOpenAiCompatible 에서 실측 확인).
-                .openAiClientAsync(
-                    OpenAIOkHttpClientAsync.builder()
-                        .apiKey("sk-not-a-real-key")
-                        .baseUrl(baseUrl)
-                        .build(),
-                )
-                .options(ChatClients.openAiCompatibleOptions("gpt-4o", baseUrl))
-                .build()
 
-            SpringAiExplanationProvider("openai", ChatClient.create(model))
-                .explain(systemText, factsJson)
+            openAiProvider(baseUrl).explain(systemText, factsJson)
 
             // baseUrl 이 이미 /v1 로 끝나므로, SDK 가 그 뒤에 무엇을 붙이는지만 본다.
             assertThat(endpoint.capturedPath()).isEqualTo("/v1/chat/completions")
@@ -126,6 +130,37 @@ class SpringAiRequestShapeTest {
             assertThat(body["model"].asText()).isEqualTo("gpt-4o")
             // maxTokens 는 이 테스트 말고는 어디서도 안 걸린다.
             assertThat(body["max_tokens"].asInt()).isEqualTo(16000)
+        }
+    }
+
+    @Test
+    fun `openai 호환 요청은 response_format 으로 explanation 스키마를 강제한다`() {
+        // Task 7 2차 재작업의 원인이 된 결함 — openai 5회 실행 전부 explained=0,
+        // JsonParseException("경복궁은..." 산문)으로 끝난 그 결과 — 가 바로 이
+        // response_format 이 빠져서였다. 구 프로바이더는 tool_choice 로 스키마를
+        // 강제했지만, Spring AI 경로에는 그 대응물이 아예 없었다. 여기서 실제로
+        // 나가는 바이트에 response_format 블록이 있는지, 그 스키마가 두 필드를
+        // 모두 required 로 요구하는지 "파싱된 구조"로 확인한다 — 문자열
+        // 부분일치(contains)는 properties 블록만 있어도 통과하는 헛 검증이라는
+        // 것을 ChatClientsTest 의 `유도된 스키마는 두 필드를 모두 요구한다`가 이미
+        // 한 번 겪었다(b49570b).
+        CapturingEndpoint().use { endpoint ->
+            val baseUrl = "${endpoint.baseUrl}/v1"
+
+            openAiProvider(baseUrl).explain(systemText, factsJson)
+
+            val body = endpoint.capturedBody()
+            val responseFormat = body["response_format"]
+            assertThat(responseFormat).describedAs("response_format 블록 자체가 없다").isNotNull
+            assertThat(responseFormat["type"].asText()).isEqualTo("json_schema")
+
+            val schema = responseFormat["json_schema"]["schema"]
+            val required = schema["required"].map { it.asText() }
+            assertThat(required).containsExactlyInAnyOrder("explanation", "citations")
+            // properties 블록도 있어야 문자열 부분일치가 아니라 진짜 파싱임을
+            // 보여준다 — required 만 보면 우연히 이름이 겹쳐도 통과할 수 있다.
+            assertThat(schema["properties"].fieldNames().asSequence().toList())
+                .containsExactlyInAnyOrder("explanation", "citations")
         }
     }
 

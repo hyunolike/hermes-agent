@@ -1,13 +1,16 @@
 package com.hermes.llm
 
+import com.anthropic.core.JsonValue
 import com.anthropic.models.messages.JsonOutputFormat
 import com.anthropic.models.messages.MessageCreateParams
 import com.anthropic.models.messages.OutputConfig
+import com.fasterxml.jackson.databind.JsonNode
 import org.springframework.ai.anthropic.AnthropicCacheOptions
 import org.springframework.ai.anthropic.AnthropicCacheStrategy
 import org.springframework.ai.anthropic.AnthropicCacheTtl
 import org.springframework.ai.anthropic.AnthropicChatOptions
 import org.springframework.ai.chat.messages.MessageType
+import org.springframework.ai.openai.OpenAiChatModel
 import org.springframework.ai.openai.OpenAiChatOptions
 
 /**
@@ -80,10 +83,44 @@ object ChatClients {
             )
             .build()
 
+    /**
+     * 구 `OpenAiCompatibleExplanationProvider`는 `tool_choice`로 스키마를 강제했다.
+     * Spring AI 경로로 옮기면서 그 대응물을 빠뜨렸었다 — `model`/`baseUrl`/
+     * `maxTokens`만 싣고 출력 계약이 전혀 없었다. 그 결과 모델이 JSON이 아니라
+     * 산문으로 답해("경복궁은...") `SpringAiExplanationProvider.toProviderResult`의
+     * `MAPPER.readTree(text)`가 깨졌다(`eval openai 5` 5회 전부 explained=0로
+     * 실측). 이번에 `response_format: json_schema`로 강제해 그 구멍을 막는다 —
+     * 설계 스펙의 프로바이더 표가 원래 요구하던 것이다.
+     */
     fun openAiCompatibleOptions(model: String, baseUrl: String): OpenAiChatOptions =
         OpenAiChatOptions.builder()
             .model(model)
             .baseUrl(baseUrl)
             .maxTokens(MAX_TOKENS)
+            .responseFormat(
+                OpenAiChatModel.ResponseFormat.builder()
+                    .type(OpenAiChatModel.ResponseFormat.Type.JSON_SCHEMA)
+                    .jsonSchema(explanationSchemaJson())
+                    .strict(true)
+                    .build(),
+            )
             .build()
+
+    /**
+     * `explanationSchema()`(Anthropic SDK가 `Explanation`에서 유도한 것, 단일
+     * 소스)를 순수 JSON 스키마 텍스트로 한 번 더 꺼낸다 — 손으로 다시 쓴
+     * 두 번째 사본을 만들지 않는다. `OpenAiChatModel$ResponseFormat.jsonSchema`는
+     * `String`을 받는데, `OpenAiChatModel`을 javap 로 까 보면 그 문자열을
+     * `objectMapper.readValue(jsonSchema, ResponseFormatJsonSchema.JsonSchema.Schema::class.java)`
+     * 로 다시 파싱한다 — 즉 순수 JSON 텍스트여야 한다(래퍼 없이). 스키마 자체는
+     * `derivedExplanationFormat.schema()._additionalProperties()`에 이미
+     * `Map<String, JsonValue>`로 들어 있다(ChatClientsTest 가 `required` 필드를
+     * 같은 경로로 읽어 이미 검증한다) — 그 맵을 `JsonValue.from(...)`으로 다시
+     * 감싼 뒤 `.convert(JsonNode::class.java)`로 풀면, Anthropic SDK 자신의
+     * Jackson 매퍼가 그 값을 직렬화한다. 손으로 만든 매퍼가 아니다.
+     */
+    private fun explanationSchemaJson(): String =
+        JsonValue.from(explanationSchema().schema()._additionalProperties())
+            .convert(JsonNode::class.java)
+            .toString()
 }
