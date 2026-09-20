@@ -2,7 +2,6 @@ package com.hermes.shared.config
 
 import com.hermes.llm.CapturingEndpoint
 import com.hermes.llm.ChatClients
-import com.hermes.llm.OpenAiCompatibleExplanationProvider
 import com.hermes.llm.SpringAiExplanationProvider
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -54,11 +53,19 @@ class LlmSelectionTest {
     }
 
     @Test
-    fun `openai 를 고를 수 있다`() {
+    fun `openai 도 Spring AI 로 돈다`() {
         val provider = LlmSelection.provider("openai", "gpt-4o", { "key" })
 
-        assertThat(provider).isInstanceOf(OpenAiCompatibleExplanationProvider::class.java)
+        assertThat(provider).isInstanceOf(SpringAiExplanationProvider::class.java)
         assertThat(provider.name).isEqualTo("openai")
+    }
+
+    @Test
+    fun `openrouter 도 Spring AI 로 돈다`() {
+        val provider = LlmSelection.provider("openrouter", "x/y", { "key" })
+
+        assertThat(provider).isInstanceOf(SpringAiExplanationProvider::class.java)
+        assertThat(provider.name).isEqualTo("openrouter")
     }
 
     @Test

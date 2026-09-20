@@ -7,6 +7,9 @@ import org.junit.jupiter.api.Test
 import org.springframework.ai.anthropic.AnthropicChatModel
 import org.springframework.ai.chat.client.ChatClient
 import com.anthropic.client.okhttp.AnthropicOkHttpClient
+import com.openai.client.okhttp.OpenAIOkHttpClient
+import com.openai.client.okhttp.OpenAIOkHttpClientAsync
+import org.springframework.ai.openai.OpenAiChatModel
 
 /**
  * 실제로 나가는 요청 본문을 검사한다.
@@ -77,5 +80,64 @@ class SpringAiRequestShapeTest {
 
             assertThat(result).isInstanceOf(Failed::class.java)
         }
+    }
+
+    @Test
+    fun `openai 호환 요청은 baseUrl 뒤에 chat completions 만 붙인다`() {
+        CapturingEndpoint().use { endpoint ->
+            // baseUrl 자체가 /v1 을 지녀야 한다 — SDK 는 그 뒤에 /chat/completions 만
+            // 얹는다(ChatClients.OPENAI_BASE_URL 의 주석 참고, openai-java-core 의
+            // OpenAiSetup.OPENAI_URL 이 이미 "https://api.openai.com/v1" 임을 javap 로
+            // 확인). 이 테스트가 그 SDK 쪽 절반을 고정한다 — 루프백 baseUrl 뒤에 /v1 을
+            // 직접 붙여서, 실제 나가는 경로가 baseUrl + "/chat/completions" 인지 본다.
+            val baseUrl = "${endpoint.baseUrl}/v1"
+            val model = OpenAiChatModel.builder()
+                .openAiClient(
+                    OpenAIOkHttpClient.builder()
+                        .apiKey("sk-not-a-real-key")
+                        .baseUrl(baseUrl)
+                        .build(),
+                )
+                // openAiClientAsync 없이는 .build() 가 IllegalStateException("At least
+                // one credential source must be specified")으로 죽는다 — 빌더 모양만
+                // 보면 안 보이는 함정이다. .openAiClient(...)(sync)만 주면 sync 필드는
+                // 우리가 준 걸 그대로 쓰지만(javap 로 확인: Objects.requireNonNullElseGet
+                // 이 null 이 아니면 supplier 를 안 부른다), async 필드는 비어 있으면
+                // OpenAiSetup.setupAsyncClient(...)로 기본 클라이언트를 새로 조립하려
+                // 하고 그 조립이 OpenAiChatOptions.getApiKey()를 읽는다.
+                // ChatClients.openAiCompatibleOptions 는 순수 함수라 apiKey 를 모른다 —
+                // 그래서 .call() 만 쓰는 동기 경로여도 빌드 시점에 async 클라이언트가
+                // 필요하다(LlmSelection.springAiOpenAiCompatible 에서 실측 확인).
+                .openAiClientAsync(
+                    OpenAIOkHttpClientAsync.builder()
+                        .apiKey("sk-not-a-real-key")
+                        .baseUrl(baseUrl)
+                        .build(),
+                )
+                .options(ChatClients.openAiCompatibleOptions("gpt-4o", baseUrl))
+                .build()
+
+            SpringAiExplanationProvider("openai", ChatClient.create(model))
+                .explain(systemText, factsJson)
+
+            // baseUrl 이 이미 /v1 로 끝나므로, SDK 가 그 뒤에 무엇을 붙이는지만 본다.
+            assertThat(endpoint.capturedPath()).isEqualTo("/v1/chat/completions")
+            val body = endpoint.capturedBody()
+            assertThat(body["model"].asText()).isEqualTo("gpt-4o")
+            // maxTokens 는 이 테스트 말고는 어디서도 안 걸린다.
+            assertThat(body["max_tokens"].asInt()).isEqualTo(16000)
+        }
+    }
+
+    @Test
+    fun `OPENAI_BASE_URL 과 OPENROUTER_BASE_URL 은 이미 v1 을 지닌다`() {
+        // 위 테스트는 SDK 쪽 절반("baseUrl 뒤에 chat completions 만 붙는다")만
+        // 고정한다. 이 상수 자체가 /v1 을 안 지니면(예: 예전처럼
+        // "https://api.openai.com") 그 테스트는 여전히 초록일 수 있다 — 루프백
+        // baseUrl 에 /v1 을 직접 붙였기 때문이다. 그래서 상수 쪽 절반은 따로
+        // 고정해야 한다. 둘을 합쳐야 "실제 요청이 .../v1/chat/completions 에
+        // 떨어진다"가 증명된다.
+        assertThat(ChatClients.OPENAI_BASE_URL).isEqualTo("https://api.openai.com/v1")
+        assertThat(ChatClients.OPENROUTER_BASE_URL).isEqualTo("https://openrouter.ai/api/v1")
     }
 }

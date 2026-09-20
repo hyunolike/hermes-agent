@@ -19,8 +19,17 @@ import org.springframework.ai.openai.OpenAiChatOptions
  */
 object ChatClients {
 
-    const val OPENAI_BASE_URL = "https://api.openai.com"
-    const val OPENROUTER_BASE_URL = "https://openrouter.ai/api"
+    // `/v1`이 baseUrl 쪽에 붙는다 — SDK 접미사가 아니다. `openai-java-core`의
+    // `OpenAiSetup`을 javap 로 까 보면 그 안의 기본값 자체가
+    // `OPENAI_URL = "https://api.openai.com/v1"`이고, `OpenAiChatModel.Builder`는
+    // 그 위에 `/chat/completions`만 얹는다(바이트코드로 확인: baseUrl 뒤에 다른 걸
+    // 붙이지 않는다). 이전에는 이 값이 "구 프로바이더 엔드포인트에서
+    // `/v1/chat/completions`를 뗀 것"이라고 잘못 가정해 `/v1`까지 통째로
+    // 떼어냈었다 — SpringAiRequestShapeTest 의 캡처 테스트가 그 상태에서 실제
+    // 경로가 `/v1/chat/completions`가 아니라 `/chat/completions`임을 잡아냈다.
+    // 뗄 접미사는 `/chat/completions`뿐이다.
+    const val OPENAI_BASE_URL = "https://api.openai.com/v1"
+    const val OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
     // 8192 가 아니다 — max_tokens 는 thinking 과 응답 텍스트를 합쳐 덮고,
     // Opus 5 는 thinking 이 기본 ON 이다.

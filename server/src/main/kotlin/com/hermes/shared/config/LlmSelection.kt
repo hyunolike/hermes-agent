@@ -4,10 +4,12 @@ import com.anthropic.client.AnthropicClient
 import com.anthropic.client.okhttp.AnthropicOkHttpClient
 import com.hermes.llm.ChatClients
 import com.hermes.llm.ExplanationProvider
-import com.hermes.llm.OpenAiCompatibleExplanationProvider
 import com.hermes.llm.SpringAiExplanationProvider
+import com.openai.client.okhttp.OpenAIOkHttpClient
+import com.openai.client.okhttp.OpenAIOkHttpClientAsync
 import org.springframework.ai.anthropic.AnthropicChatModel
 import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.openai.OpenAiChatModel
 
 /**
  * 운영 서버의 프로바이더를 설정으로 고른다.
@@ -52,13 +54,62 @@ object LlmSelection {
                         .build(),
                 ),
             )
-            "openai" -> OpenAiCompatibleExplanationProvider.openAi(require(env, "OPENAI_API_KEY"), model)
-            "openrouter" ->
-                OpenAiCompatibleExplanationProvider.openRouter(require(env, "OPENROUTER_API_KEY"), model)
+            "openai" -> springAiOpenAiCompatible(
+                name = "openai",
+                apiKey = require(env, "OPENAI_API_KEY"),
+                model = model,
+                baseUrl = ChatClients.OPENAI_BASE_URL,
+            )
+            "openrouter" -> springAiOpenAiCompatible(
+                name = "openrouter",
+                apiKey = require(env, "OPENROUTER_API_KEY"),
+                model = model,
+                baseUrl = ChatClients.OPENROUTER_BASE_URL,
+            )
             else -> error(
                 "unknown hermes.llm.provider: '$name' (expected anthropic, openai, or openrouter)",
             )
         }
+
+    /**
+     * `openAiClientAsync(...)` 도 같이 준다 — 실측으로 확인한 내용이다. `.build()` 가
+     * sync 클라이언트는 우리가 준 것을 그대로 쓰지만(javap 로 확인:
+     * `Objects.requireNonNullElseGet` 이 null 이 아니면 supplier 를 안 부른다), async
+     * 필드는 안 채우면 `OpenAiSetup.setupAsyncClient(...)` 로 기본 클라이언트를
+     * 새로 만들려 하고, 그 기본 조립은 `OpenAiChatOptions.getApiKey()` 에서 키를
+     * 찾는다. `ChatClients.openAiCompatibleOptions` 는 순수 함수로 model/baseUrl/
+     * maxTokens 만 싣고 apiKey 를 모른다 — 그래서 async 클라이언트를 안 주면
+     * `IllegalStateException: At least one credential source must be specified`
+     * 로 죽는다(테스트로 확인). `.call()` 만 쓰는 동기 경로에서도 `.build()` 가
+     * async 클라이언트를 즉시 필요로 하므로, 같은 키/baseUrl 로 만든 async
+     * 클라이언트를 명시적으로 준다.
+     */
+    private fun springAiOpenAiCompatible(
+        name: String,
+        apiKey: String,
+        model: String,
+        baseUrl: String,
+    ): ExplanationProvider =
+        SpringAiExplanationProvider(
+            name = name,
+            chatClient = ChatClient.create(
+                OpenAiChatModel.builder()
+                    .openAiClient(
+                        OpenAIOkHttpClient.builder()
+                            .apiKey(apiKey)
+                            .baseUrl(baseUrl)
+                            .build(),
+                    )
+                    .openAiClientAsync(
+                        OpenAIOkHttpClientAsync.builder()
+                            .apiKey(apiKey)
+                            .baseUrl(baseUrl)
+                            .build(),
+                    )
+                    .options(ChatClients.openAiCompatibleOptions(model, baseUrl))
+                    .build(),
+            ),
+        )
 
     /**
      * `baseUrl == null` 이면 `AnthropicOkHttpClient.fromEnv()` 와 바이트코드 수준으로
