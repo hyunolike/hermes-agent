@@ -104,6 +104,17 @@ class SpringAiRequestShapeTest {
     }
 
     @Test
+    fun `같은 입력이면 요청 본문이 바이트까지 완전히 같다`() {
+        fun capture(): String = CapturingEndpoint().use { endpoint ->
+            provider(endpoint.baseUrl).explain(systemText, factsJson)
+            endpoint.capturedBody().toString()
+        }
+
+        // 접두사가 1바이트만 흔들려도 1시간 프롬프트 캐시는 통째로 미스 난다.
+        assertThat(capture()).isEqualTo(capture())
+    }
+
+    @Test
     fun `엔드포인트가 죽어도 예외가 아니라 Failed 로 끝난다`() {
         CapturingEndpoint().use { endpoint ->
             val result = provider(endpoint.baseUrl).explain(systemText, factsJson)
