@@ -53,6 +53,38 @@ class LlmSelectionTest {
     }
 
     @Test
+    fun `LlmSelection 이 고른 openai 프로바이더가 v1 chat completions 로 스키마 강제 요청을 보낸다`() {
+        // anthropic 쪽 바로 위 테스트와 짝을 이룬다. 그 테스트가 없었을 때 리뷰어가
+        // ChatClients.OPENAI_BASE_URL 을 anthropicClient 에 잘못 흘려도 그린으로
+        // 남을 수 있었던 것처럼, openai/openrouter 분기도 SpringAiRequestShapeTest
+        // 만으로는 안 잡힌다 — 그 테스트는 LlmSelection 을 거치지 않고 클라이언트를
+        // 손으로 다시 조립하기 때문이다(openAiProvider 헬퍼). 실제로 리뷰어가
+        // LlmSelection.kt 의 "openai" 분기에서
+        // `baseUrl = ChatClients.OPENAI_BASE_URL` 을
+        // `baseUrl = ChatClients.OPENAI_BASE_URL.removeSuffix("/v1")` 로 뮤테이션해도
+        // `./gradlew build` 가 그대로 통과했다 — 상수와 SDK 쪽 절반은 각각
+        // 고정돼 있었지만 그 둘을 잇는 배선 자체는 아무것도 고정하지 않았기
+        // 때문이다. 여기서는 LlmSelection.provider(...) 를 직접 통해 나가는
+        // 바이트를 본다 — 설정에서 요청까지 전 구간을 openai 쪽에서도 잇는다.
+        CapturingEndpoint().use { endpoint ->
+            // baseUrl 자체가 /v1 을 지녀야 한다 — SDK 는 그 뒤에 /chat/completions 만
+            // 얹는다(ChatClients.OPENAI_BASE_URL 의 주석, SpringAiRequestShapeTest 가
+            // 이미 확인).
+            val baseUrl = "${endpoint.baseUrl}/v1"
+            val provider = LlmSelection.provider("openai", "gpt-4o", { "key" }, baseUrl)
+
+            provider.explain("system", "user")
+
+            assertThat(endpoint.capturedPath()).isEqualTo("/v1/chat/completions")
+            val body = endpoint.capturedBody()
+            assertThat(body["model"].asText()).isEqualTo("gpt-4o")
+            // response_format 자체가 여기 있어야 한다 — LlmSelection 이 실제로
+            // ChatClients.openAiCompatibleOptions 를 거쳐 조립했다는 뜻이다.
+            assertThat(body["response_format"]["type"].asText()).isEqualTo("json_schema")
+        }
+    }
+
+    @Test
     fun `openai 도 Spring AI 로 돈다`() {
         val provider = LlmSelection.provider("openai", "gpt-4o", { "key" })
 

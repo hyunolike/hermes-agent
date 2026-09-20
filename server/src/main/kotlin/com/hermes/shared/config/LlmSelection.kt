@@ -34,13 +34,27 @@ object LlmSelection {
         name: String,
         model: String,
         env: (String) -> String?,
-        // 운영 경로에는 영향이 없다 — null 이면 지금과 똑같이
-        // `AnthropicOkHttpClient.fromEnv()` 로 만든다. 이 값이 존재하는 유일한
-        // 이유는 테스트가 `LlmSelection.provider(...)` 가 실제로 조립해 내보내는
-        // 요청 바이트를 루프백 엔드포인트로 가로챌 수 있게 하는 것뿐이다 —
+        // 운영 경로에는 영향이 없다 — null 이면 지금과 똑같은 프로덕션 baseUrl 을
+        // 쓴다. 원래는 `anthropicBaseUrl`이라는 이름으로 anthropic 분기에만
+        // 있었는데, 그 한 파라미터를 세 분기 전부가 나눠 쓰도록 일반화했다 —
+        // `provider(...)`는 한 번에 이름 하나만 골라 그 분기 하나만 돈다, 그래서
+        // "지금 고른 분기의 baseUrl"이라는 뜻으로 값 하나면 충분하고, 분기별로
+        // 파라미터를 따로 두면 "둘 다 채워지면 어느 게 이기나"라는 질문이 공짜로
+        // 따라온다. 이 값이 존재하는 유일한 이유는 테스트가
+        // `LlmSelection.provider(...)` 가 실제로 조립해 내보내는 요청 바이트를
+        // 루프백 엔드포인트로 가로챌 수 있게 하는 것뿐이다 —
         // `OpenAiCompatibleExplanationProvider.openAi(apiKey, model, http = null)` 와
         // 같은 자리의 같은 이유다.
-        anthropicBaseUrl: String? = null,
+        //
+        // 이 파라미터가 없던 채로 openai/openrouter 분기를 고쳤을 때(Task 7 3차
+        // 재작업 이전) 리뷰어가 `LlmSelection.kt`의
+        // `baseUrl = ChatClients.OPENAI_BASE_URL`을
+        // `baseUrl = ChatClients.OPENAI_BASE_URL.removeSuffix("/v1")`로 뮤테이션해도
+        // `./gradlew build`가 그대로 통과했다 — `SpringAiRequestShapeTest`의 캡처
+        // 테스트가 `LlmSelection`을 거치지 않고 클라이언트를 손으로 다시 조립해서
+        // 배선 자체는 아무것도 고정하지 않았기 때문이다. `LlmSelectionTest`의
+        // end-to-end 캡처 테스트가 이제 그 틈을 닫는다.
+        baseUrlOverride: String? = null,
     ): ExplanationProvider =
         when (name) {
             // Anthropic SDK 는 키가 없어도 던지지 않고 인증되지 않은 클라이언트를
@@ -49,7 +63,7 @@ object LlmSelection {
                 name = "anthropic",
                 chatClient = ChatClient.create(
                     AnthropicChatModel.builder()
-                        .anthropicClient(anthropicClient(anthropicBaseUrl))
+                        .anthropicClient(anthropicClient(baseUrlOverride))
                         .options(ChatClients.anthropicOptions(model))
                         .build(),
                 ),
@@ -58,13 +72,13 @@ object LlmSelection {
                 name = "openai",
                 apiKey = require(env, "OPENAI_API_KEY"),
                 model = model,
-                baseUrl = ChatClients.OPENAI_BASE_URL,
+                baseUrl = baseUrlOverride ?: ChatClients.OPENAI_BASE_URL,
             )
             "openrouter" -> springAiOpenAiCompatible(
                 name = "openrouter",
                 apiKey = require(env, "OPENROUTER_API_KEY"),
                 model = model,
-                baseUrl = ChatClients.OPENROUTER_BASE_URL,
+                baseUrl = baseUrlOverride ?: ChatClients.OPENROUTER_BASE_URL,
             )
             else -> error(
                 "unknown hermes.llm.provider: '$name' (expected anthropic, openai, or openrouter)",
