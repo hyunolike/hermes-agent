@@ -18,6 +18,9 @@ class AskStreamParserTest {
     private fun citations(events: List<ParseEvent>) =
         events.filterIsInstance<CitationsClosed>().single().citations
 
+    /** 백슬래시와 16진수를 떼어 둔다 — 붙여 쓰면 도구 층이 실제 글자로 풀어 버린다. */
+    private fun esc(hex: String) = "\\" + "u" + hex
+
     @Test
     fun `인용이 먼저 오면 인용을 알린 뒤 본문을 알린다`() {
         val (events, parser) = run("""{"citations":["a.md","b.md"],"explanation":"안녕"}""")
@@ -39,9 +42,14 @@ class AskStreamParserTest {
 
     @Test
     fun `모든 분할 위치에서 결과가 같다`() {
-        // 이스케이프를 전부 섞은 본문. 가 은 "가", 😀 은 이모지 하나다.
-        val raw = """{"citations":["a\"b.md","c\\d.md"],"explanation":"줄\n탭\t따옴\"역\\슬\/가가웃😀끝"}"""
-        val expectedBody = "줄\n탭\t따옴\"역\\슬/가가웃😀끝"
+        // 이스케이프를 전부 섞은 본문 — 원문 그대로의 문자와 유니코드 이스케이프를 함께
+        // 담는다. 가는 원문 그대로 두 번, esc 로 만든 유니코드 이스케이프로 한 번 더,
+        // 이모지는 서로게이트 쌍 이스케이프로 담아 모델이 실제로 보내는 두 경로(원문 문자,
+        // \u 이스케이프)를 한 번에 검증한다.
+        val emoji = esc("D83D") + esc("DE00")
+        val raw =
+            """{"citations":["a\"b.md","c\\d.md"],"explanation":"줄\n탭\t따옴\"역\\슬\/가가웃${esc("AC00")}${emoji}끝"}"""
+        val expectedBody = "줄\n탭\t따옴\"역\\슬/가가웃가" + String(Character.toChars(0x1F600)) + "끝"
         val expectedCitations = listOf("a\"b.md", "c\\d.md")
 
         for (cut in 0..raw.length) {
@@ -54,17 +62,21 @@ class AskStreamParserTest {
 
     @Test
     fun `한 글자씩 먹여도 결과가 같다`() {
-        val raw = """{"citations":["a.md"],"explanation":"가가😀"}"""
+        // 유니코드 이스케이프를 한 글자씩 먹이면 \, u, 16진수 넉 자가 전부 따로따로
+        // 조각으로 들어온다 — esc 로 만들어 그 경로를 실제로 태운다.
+        val emoji = esc("D83D") + esc("DE00")
+        val raw = """{"citations":["a.md"],"explanation":"가${esc("AC00")}${emoji}"}"""
         val (events, _) = run(*raw.map { it.toString() }.toTypedArray())
 
-        assertThat(body(events)).isEqualTo("가가😀")
+        assertThat(body(events)).isEqualTo("가가" + String(Character.toChars(0x1F600)))
     }
 
     @Test
     fun `서로게이트 쌍의 앞쪽 반만 담긴 본문 조각은 내지 않는다`() {
-        // 이모지 앞쪽 반까지만 먹인 시점에 나온 본문 조각들이 짝 없는 서로게이트로 끝나면 안 된다.
+        // 이모지 앞쪽 반까지만 먹인 시점에 나온 본문 조각들이 짝 없는 서로게이트로 끝나면
+        // 안 된다. 모델이 실제로 보내는 형태 그대로 유니코드 이스케이프로 앞쪽 반만 먹인다.
         val parser = AskStreamParser()
-        val first = parser.feed("""{"citations":["a.md"],"explanation":"x\uD83D""")
+        val first = parser.feed("""{"citations":["a.md"],"explanation":"x${esc("D83D")}""")
         val firstBody = first.filterIsInstance<BodyText>().joinToString("") { it.text }
 
         assertThat(firstBody).isEqualTo("x")
