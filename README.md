@@ -377,6 +377,8 @@ The procedure and the values actually deployed (URLs · region · secret names �
 
 **`@Modulith` currently enforces nothing.** No modules are declared, so the annotation is inert. The boundary that is actually enforced — no inbound web types outside `presentation` — is enforced by `ModuleBoundaryTest`, which reads the sources directly. Delete that test and the boundary goes with it.
 
+**Unpin victools and the build still passes — it dies at runtime.** Spring AI pulls `jsonschema-generator` 5.0.0, while the Anthropic SDK's structured output calls a 4.x signature. When 5.0.0 wins the conflict, schema derivation throws `NoSuchMethodError`, and because compilation succeeds there is no signal until then. The three `resolutionStrategy.force` lines in `build.gradle.kts` are the only guard, and `DependencyPinTest` keeps them honest — it asserts the **return type**, not just that the method exists, because 4.x and 5.x share parameter types and differ only in their Jackson namespace.
+
 ## 👤 Author
 
 <div align="center">
