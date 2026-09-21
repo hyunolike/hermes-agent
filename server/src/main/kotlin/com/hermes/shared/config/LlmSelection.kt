@@ -68,23 +68,19 @@ object LlmSelection {
                         .build(),
                 ),
             )
-            // 두 분기 다 `defaultBaseUrl(name)` 을 부른다. 예전처럼 분기마다
-            // 리터럴을 따로 타이핑하면(`defaultBaseUrl("openai")`) 그 둘을
-            // 맞바꿔도 컴파일되고 스위트도 그린으로 남는다 — 캡처 테스트가 전부
-            // `baseUrlOverride` 를 채워 `?:` 를 단락시키기 때문이다. `name` 을
-            // 넘기면 맞바꿀 두 번째 문자열이 아예 없다 — 이 분기가 돌았다는
-            // 사실 자체가 `name` 값을 확정한다.
+            // 분기는 자기를 구분하는 것(이름·키·모델·override)만 넘긴다. baseUrl 은
+            // `name` 에서 나오므로, 분기가 이름과 다른 URL 을 짝지을 자리가 없다.
             "openai" -> springAiOpenAiCompatible(
                 name = "openai",
                 apiKey = require(env, "OPENAI_API_KEY"),
                 model = model,
-                baseUrl = baseUrlOverride ?: defaultBaseUrl(name),
+                baseUrlOverride = baseUrlOverride,
             )
             "openrouter" -> springAiOpenAiCompatible(
                 name = "openrouter",
                 apiKey = require(env, "OPENROUTER_API_KEY"),
                 model = model,
-                baseUrl = baseUrlOverride ?: defaultBaseUrl(name),
+                baseUrlOverride = baseUrlOverride,
             )
             else -> error(
                 "unknown hermes.llm.provider: '$name' (expected anthropic, openai, or openrouter)",
@@ -135,9 +131,11 @@ object LlmSelection {
         name: String,
         apiKey: String,
         model: String,
-        baseUrl: String,
-    ): ExplanationProvider =
-        SpringAiExplanationProvider(
+        baseUrlOverride: String?,
+    ): ExplanationProvider {
+        // override 가 없으면 프로바이더 이름이 baseUrl 을 정한다 — 분기가 아니라.
+        val baseUrl = baseUrlOverride ?: defaultBaseUrl(name)
+        return SpringAiExplanationProvider(
             name = name,
             chatClient = ChatClient.create(
                 OpenAiChatModel.builder()
@@ -157,6 +155,7 @@ object LlmSelection {
                     .build(),
             ),
         )
+    }
 
     /**
      * `baseUrl == null` 이면 `AnthropicOkHttpClient.fromEnv()` 와 바이트코드 수준으로
