@@ -166,8 +166,8 @@ KO = {
     "assembler": ["PromptAssembler", "systemText = 번들 원문 그대로"],
     "service": ["ExplanationService.explain()"],
     "provider": ["ExplanationProvider", "어느 프로바이더로 물을 것인가"],
-    "anthropic": ["Anthropic", "1h 캐시 + 구조화 출력"],
-    "openrouter": ["OpenRouter", "tool_choice 로 스키마 강제"],
+    "anthropic": ["anthropic", "1h 캐시 + 구조화 출력"],
+    "openrouter": ["openai · openrouter", "response_format 으로 스키마 강제"],
     "result": ["ProviderResult"],
     "validator": ["CitationValidator", "번들에 실재하는 경로인가?"],
     "unavail": ["Unavailable(거절 사유)", "설명 없음 = 안전한 실패"],
@@ -180,7 +180,7 @@ KO = {
     "alt": ("설명 요청 흐름도: 백엔드 응답 3종이 FactsNormalizer 를 지나 BackendFacts 로, "
             "hanjeok-bundle.txt 는 BundleLoader 와 PromptAssembler 를 지나 systemText 로 "
             "들어가 ExplanationService.explain() 에서 만난다. ExplanationProvider"
-            "(Anthropic 또는 OpenRouter)가 낸 ProviderResult 는 Refused·Failed 면 "
+            "(anthropic 또는 openai·openrouter 경로)가 낸 ProviderResult 는 Refused·Failed 면 "
             "Unavailable, Answered 면 CitationValidator 로 간다. 인용이 유효하면 "
             "Explained 가 되어 ForbiddenBehaviours.check() 를 거치고, 두 갈래 모두 "
             "ViolationTally 로 모인다."),
@@ -195,8 +195,8 @@ EN = {
     "assembler": ["PromptAssembler", "systemText = the bundle, verbatim"],
     "service": ["ExplanationService.explain()"],
     "provider": ["ExplanationProvider", "which provider gets asked"],
-    "anthropic": ["Anthropic", "1h cache + structured output"],
-    "openrouter": ["OpenRouter", "schema forced via tool_choice"],
+    "anthropic": ["anthropic", "1h cache + structured output"],
+    "openrouter": ["openai · openrouter", "schema forced via response_format"],
     "result": ["ProviderResult"],
     "validator": ["CitationValidator", "does the path exist in the bundle?"],
     "unavail": ["Unavailable(reason)", "no explanation = the safe failure"],
@@ -210,7 +210,7 @@ EN = {
             "FactsNormalizer into BackendFacts, while hanjeok-bundle.txt passes through "
             "BundleLoader and PromptAssembler into systemText; both meet in "
             "ExplanationService.explain(). The ProviderResult from ExplanationProvider "
-            "(Anthropic or OpenRouter) becomes Unavailable when Refused or Failed, and "
+            "(anthropic or the openai-compatible path) becomes Unavailable when Refused or Failed, and "
             "goes to CitationValidator when Answered. Valid citations make it Explained, "
             "which ForbiddenBehaviours.check() judges; both branches end in ViolationTally."),
 }
