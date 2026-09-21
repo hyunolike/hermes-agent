@@ -379,6 +379,8 @@ hermes-agent
 
 **`@Modulith` 는 현재 아무것도 강제하지 않는다.** 선언된 모듈이 없어 애노테이션은 inert 하다. 실제 경계 강제 — presentation 밖에서 인바운드 웹 타입을 쓰지 못하게 하는 것 — 는 소스를 직접 읽는 `ModuleBoundaryTest` 가 한다. 그 테스트를 지우면 경계도 사라진다.
 
+**victools 핀을 풀면 컴파일은 통과하고 런타임에 죽는다.** Spring AI 는 `jsonschema-generator` 5.0.0 을 끌어오는데 Anthropic SDK 의 구조화 출력은 4.x 시그니처를 부른다. 5.0.0 이 충돌에서 이기면 스키마 유도가 `NoSuchMethodError` 로 터지는데, 빌드는 멀쩡히 성공하므로 그 전까지 아무 신호도 없다. `build.gradle.kts` 의 `resolutionStrategy.force` 세 줄이 유일한 방어선이고, `DependencyPinTest` 가 그것을 지킨다 — 그 테스트는 메서드 존재가 아니라 **반환 타입**을 단언한다. 4.x 와 5.x 는 파라미터 타입이 같고 Jackson 네임스페이스만 다르기 때문이다.
+
 ## 👤 만든 사람
 
 <div align="center">
