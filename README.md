@@ -13,7 +13,7 @@
 ![Java](https://img.shields.io/badge/JDK-21-ED8B00?logo=openjdk&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.0-6DB33F?logo=springboot&logoColor=white)
 ![Gradle](https://img.shields.io/badge/Gradle-Kotlin%20DSL-02303A?logo=gradle&logoColor=white)
-![Anthropic](https://img.shields.io/badge/Anthropic-Java%20SDK%202.34.0-D97757?logo=anthropic&logoColor=white)
+![Spring AI](https://img.shields.io/badge/Spring%20AI-2.0.1-6DB33F?logo=springboot&logoColor=white)
 
 <img src="docs/images/stack/kotlin.svg" alt="Kotlin" width="46"> <img src="docs/images/stack/spring-boot.svg" alt="Spring Boot" width="46"> <img src="docs/images/stack/gradle.svg" alt="Gradle" width="46"> <img src="docs/images/stack/anthropic.svg" alt="Anthropic" width="46"> <img src="docs/images/stack/nextjs.svg" alt="Next.js" width="46"> <img src="docs/images/stack/docker.svg" alt="Docker" width="46">
 
@@ -83,6 +83,8 @@ The `ExplanationProvider` port exists for exactly one reason: to compare a direc
 
 The server picks from the same three names (`HERMES_LLM_PROVIDER`). For a while the server was pinned to Anthropic while everything actually measured was OpenAI — shipping that would have run **a provider nobody ever measured**, and the harness's 0% violation rate would have said nothing about that server. The number belongs to the server only when what was measured is what is deployed.
 
+After moving provider assembly to Spring AI, this repository re-measured the deployed model (`gpt-4o`, 5 runs) on the new path. What the harness printed was `REORDERED_COURSE 20.0% (1/5)`, the other seven at 0%. Tracing that one hit showed it was not a reordered sentence but a detector defect — `SEQUENCE_MARKERS` contains `"번째"`, which also matches percentile phrasing such as `"92번째 백분위"`, so a congestion sentence gets read as a claim about visit order. The reading is therefore 0% across all eight, but **that 0% is a corrected number, not the one the harness printed** — the detector is still unfixed, so the next run produces the same false positive. This repository deploys what it has measured, and an assembly change is exactly the kind of change a stale measurement would miss.
+
 ### 5. Two screens — the explanation next to its evidence
 
 `frontend/`'s `/course/[uuid]` draws the course and puts the explanation beneath it. Clicking a citation chip opens the exact document the model saw, without leaving the page. `/evidence` lists every document in the bundle with its size — "this much is what the LLM could see" is all that screen sets out to prove.
@@ -123,14 +125,15 @@ The `user` turn puts **the facts first and the question last**. A question is te
 
 `GET /attractions/{id}` is dropped during normalization — its only unique field, `area`, is never used by an explanation, so the spec cut the call itself.
 
-The two providers differ only inside their adapters.
+There is one adapter (`SpringAiExplanationProvider`). Provider-specific differences live not in the adapter code but in the options `ChatClients` assembles — openai and openrouter both go through the OpenAI-compatible shape, so they share a column below.
 
-| | Anthropic | OpenRouter |
+| | anthropic | openai · openrouter |
 | --- | --- | --- |
-| Output contract | SDK derives the schema from the `Explanation` type | A single function call forced via `tool_choice` |
-| Caching | 1-hour TTL cache breakpoint on the `system` block | None — a free tier has no cost to lower |
-| Refusals | `stop_reason=refusal` branched **before** reading `content` | Judged from the HTTP status code |
-| What it spends | Tokens | Latency and one rate-limit slot |
+| Output contract | SDK derives the schema from the `Explanation` type | Schema forced via `response_format: json_schema` |
+| Caching | 1-hour TTL cache breakpoint on the `system` block | None — a free tier has no cost to lower, and the openai path does not turn on caching either |
+| What it spends | Tokens | openai: tokens / openrouter: latency and one rate-limit slot |
+
+Refusal handling (`stop_reason=refusal` branched **before** reading `content`) is logic all three providers share inside `SpringAiExplanationProvider` itself, so it is no longer a per-provider difference.
 
 <br/>
 
@@ -166,7 +169,7 @@ Each one is a claim the policy documents (`decisions/keep-llm-out-of-ranking.md`
 | <img src="docs/images/stack/kotlin.svg" width="24" alt=""> <img src="docs/images/stack/java.svg" width="24" alt=""> Language · Runtime | Kotlin 2.2.21, JVM Toolchain 21 |
 | <img src="docs/images/stack/spring-boot.svg" width="24" alt=""> Framework | Spring Boot 4.1.0, Spring Modulith 2.1.0 |
 | <img src="docs/images/stack/gradle.svg" width="24" alt=""> Build | Gradle (Kotlin DSL), single module with a separate `harness` source set |
-| <img src="docs/images/stack/anthropic.svg" width="24" alt=""> <img src="docs/images/stack/openai.svg" width="24" alt=""> LLM | Anthropic Java SDK 2.34.0 (`claude-opus-5`), OpenAI · OpenRouter Chat Completions via `java.net.http.HttpClient` |
+| <img src="docs/images/stack/anthropic.svg" width="24" alt=""> <img src="docs/images/stack/openai.svg" width="24" alt=""> LLM | Spring AI 2.0.1 (`spring-ai-anthropic`, `spring-ai-openai`) over Anthropic Java SDK 2.52.0 (`claude-opus-5`) · OpenAI Java SDK 4.49.0 (shared by openai and openrouter) |
 | Serialization | Jackson (`jackson-module-kotlin`) |
 | <img src="docs/images/stack/junit.svg" width="24" alt=""> Testing | JUnit 5 (`spring-boot-starter-test`), Vitest + Testing Library on the frontend |
 | <img src="docs/images/stack/nextjs.svg" width="24" alt=""> <img src="docs/images/stack/react.svg" width="24" alt=""> <img src="docs/images/stack/typescript.svg" width="24" alt=""> <img src="docs/images/stack/tailwind.svg" width="24" alt=""> UI | Next.js 16, React 19, TypeScript 5, Tailwind CSS 4 |
@@ -190,7 +193,7 @@ Each one is a claim the policy documents (`decisions/keep-llm-out-of-ranking.md`
 ./gradlew test    # unit tests only
 ```
 
-Unit tests never touch the network. A fake stands in for `ExplanationProvider`, and the request-shape tests inspect the parameters (and the OpenRouter request body) the builders produce instead of making a call.
+Unit tests never touch the network. A fake stands in for `ExplanationProvider`, and the request-shape tests intercept the actual request bytes going out to a loopback endpoint instead of making a call (both the anthropic and the OpenAI-compatible path).
 
 ### Run the evaluation
 
@@ -204,6 +207,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 
 # Compare against OpenRouter's free tier
 export OPENROUTER_API_KEY=sk-or-...
+export OPENROUTER_MODEL=...   # no default — name a model that still exists
 ./gradlew eval --args="openrouter 5"
 
 # Measure a real hanjeok course instead of the fixture
@@ -217,7 +221,7 @@ That last form matters. The fixture is one shape of one course, and measuring a 
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | the `anthropic` provider | — |
 | `OPENROUTER_API_KEY` | the `openrouter` provider | — |
-| `OPENROUTER_MODEL` | the `openrouter` provider | `nvidia/nemotron-nano-9b-v2:free` |
+| `OPENROUTER_MODEL` | the `openrouter` provider | none — **you must name one.** The old default, `nvidia/nemotron-nano-9b-v2:free`, was withdrawn upstream and now 404s |
 | `OPENAI_API_KEY` | the `openai` provider, and the quality judge | — |
 | `OPENAI_MODEL` | the `openai` provider | `gpt-4o-mini` |
 | `JUDGE_MODEL` | the quality judge — **only runs when set** | none (no judging) |
@@ -246,7 +250,7 @@ violations  : rate = runs-with-violation / explained (NOT /runs); occurrences = 
 The important part is that the two numbers do not share a denominator.
 
 - **`rate` is divided by `explained`, not by `runs`.** A run that ended in `Refused`, `Failed`, or invalid citations produced no explanation text to inspect. Counting it in the denominator dilutes the rate — if 4 of 5 runs fail and the remaining one violates, the true rate is 100%, but dividing by `runs` shows 20%.
-- **`occurrences` is the raw count.** A single run can invent several place names, so `INVENTED_PLACE` may exceed the number of runs. The other seven are capped at one per run.
+- **`occurrences` is the raw count.** A single run can invent several place names, and it can mislabel several grades, so `INVENTED_PLACE` and `GRADE_MISLABEL` may exceed the number of runs. The other six are capped at one per run.
 - **When `explained == 0`, `rate` prints `UNMEASURED` rather than `0.0%`, and the process exits with code 1.** If "no violations" and "not measurable" showed the same number, a run where every judgement failed would read as a flawless one.
 
 <br/>
@@ -319,8 +323,8 @@ hermes-agent
 │   │   └── CourseQuestionService.kt # follow-ups — same bundle · same validation
 │   ├── llm/              # provider adapters
 │   │   ├── ExplanationProvider.kt        # the swap point (port)
-│   │   ├── AnthropicExplanationProvider.kt
-│   │   └── OpenRouterExplanationProvider.kt
+│   │   ├── SpringAiExplanationProvider.kt# the single implementation behind the port
+│   │   └── ChatClients.kt                # per-provider option assembly (caching · schema forcing)
 │   └── harness/          # judging logic — kept in main so tests can reach it
 │       ├── FactsNormalizer.kt     # backend responses → flat facts
 │       ├── ForbiddenBehaviours.kt # judges the eight behaviours
