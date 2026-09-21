@@ -1,5 +1,7 @@
 package com.hermes.llm
 
+import com.fasterxml.jackson.databind.ObjectMapper
+
 data class Explanation(val explanation: String, val citations: List<String>)
 
 data class ProviderUsage(
@@ -18,6 +20,17 @@ data class Refused(val category: String?) : ProviderResult
 
 data class Failed(val reason: String) : ProviderResult
 
+/** stream() 이 어떻게 끝났는가. 조각은 onChunk 로 이미 나갔다. */
+sealed interface StreamEnd
+
+data class StreamCompleted(val usage: ProviderUsage) : StreamEnd
+
+data class StreamRefused(val category: String?) : StreamEnd
+
+data class StreamFailed(val reason: String) : StreamEnd
+
+private val STREAM_MAPPER = ObjectMapper()
+
 /**
  * 프로바이더 교체 지점.
  *
@@ -29,4 +42,30 @@ interface ExplanationProvider {
     val name: String
 
     fun explain(systemText: String, userText: String): ProviderResult
+
+    /**
+     * 모델이 조각을 보낼 때마다 onChunk 를 부른다. 조각은 모델이 낸 JSON 텍스트 그대로다 —
+     * 해독은 AskStreamParser 가, 검증은 AskStreamGate 가 한다.
+     *
+     * 기본 구현은 explain() 결과를 조각 하나로 낸다. 스트리밍하지 않는 프로바이더와
+     * 테스트 페이크가 같은 계약을 쓸 수 있고, 같은 explain() 을 거치므로 프롬프트
+     * 조립이 갈라지지 않는다. 인용을 먼저 두는 것은 실제 모델이 스키마 순서대로
+     * 내보내는 것과 맞추기 위해서다 — 안전은 이 순서에 의존하지 않는다.
+     */
+    fun stream(systemText: String, userText: String, onChunk: (String) -> Unit): StreamEnd =
+        when (val result = explain(systemText, userText)) {
+            is Answered -> {
+                onChunk(
+                    STREAM_MAPPER.writeValueAsString(
+                        linkedMapOf(
+                            "citations" to result.explanation.citations,
+                            "explanation" to result.explanation.explanation,
+                        ),
+                    ),
+                )
+                StreamCompleted(result.usage)
+            }
+            is Refused -> StreamRefused(result.category)
+            is Failed -> StreamFailed(result.reason)
+        }
 }
