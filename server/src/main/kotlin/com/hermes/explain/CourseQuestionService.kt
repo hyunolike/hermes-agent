@@ -40,13 +40,7 @@ class CourseQuestionService(
             is Failed -> Unavailable(result.reason)
             is Answered -> when (val citations = validator.validate(result.explanation.citations)) {
                 is Valid -> Explained(result.explanation)
-                is Invalid -> Unavailable(
-                    if (citations.unknownPaths.isEmpty()) {
-                        "no citations"
-                    } else {
-                        "citations not in bundle: ${citations.unknownPaths.joinToString()}"
-                    },
-                )
+                is Invalid -> Unavailable(invalidCitationReason(citations))
             }
         }
     }
