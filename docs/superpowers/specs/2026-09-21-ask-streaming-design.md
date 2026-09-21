@@ -107,8 +107,14 @@ data class StreamFailed(val reason: String) : StreamEnd
 | `citations` | 인용 배열이 완성되고 **검증을 통과한 직후** | 경로 목록 |
 | `delta` | 검증 통과 후 본문 조각이 올 때마다 | 텍스트(이스케이프가 풀린) |
 | `done` | 정상 종료 | `generatedAt`, `model` |
-| `unavailable` | `delta` 를 **하나도 보내기 전의** 모든 실패 — 인용 무효, 거절, 사실 조회 실패, 첫 본문 전 스트림 실패 | 사유 |
-| `aborted` | `delta` 를 **보내기 시작한 뒤의** 실패 — 본문 도중 스트림이 끊김 | 사유 |
+| `unavailable` | `delta` 를 **하나도 보내기 전의** 모든 실패 — 인용 무효, 거절, 사실 조회 실패, 첫 본문 전 스트림 실패 | `{"code":"EXPLANATION_UNAVAILABLE"}` |
+| `aborted` | `delta` 를 **보내기 시작한 뒤의** 실패 — 본문 도중 스트림이 끊김 | `{"code":"EXPLANATION_ABORTED"}` |
+
+**실패 이벤트는 사유를 싣지 않는다.** 이 서비스의 에러 응답은 불투명하다 —
+`ApiErrorHandler` 는 `{"code":"EXPLANATION_UNAVAILABLE"}` 만 돌려주고, 내부 사유는 로그에만
+남기며, `ErrorResponseOpacityTest` 가 그것을 지킨다. 스트리밍이라고 예외를 두면 인용 경로,
+예외 메시지, 모델 거절 범주가 브라우저로 샌다. 사유는 서버가 `unavailable`/`aborted` 를
+보내는 자리에서 로그로 남긴다 — `/agent/ask` 가 하는 것과 같다.
 
 실패 이벤트를 둘로 나눈 이유: 두 경우의 불변식이 다르다.
 
