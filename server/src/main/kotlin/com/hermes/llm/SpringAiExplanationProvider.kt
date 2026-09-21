@@ -45,6 +45,38 @@ class SpringAiExplanationProvider(
         }
     }
 
+    /**
+     * 실제 스트리밍. Reactor 는 여기 가둔다 — 포트는 콜백과 블로킹 반환만 안다.
+     *
+     * 거절은 마지막 조각의 finishReason 으로 온다. 거절 응답은 content 가 비어 있어
+     * onChunk 가 불리지 않으므로, 게이트는 delta 없이 unavailable 로 닫는다.
+     */
+    override fun stream(systemText: String, userText: String, onChunk: (String) -> Unit): StreamEnd = try {
+        var last: ChatResponse? = null
+        chatClient
+            .prompt(Prompt(listOf(SystemMessage(systemText), UserMessage(userText))))
+            .stream()
+            .chatResponse()
+            .doOnNext { response ->
+                last = response
+                val text = response.result?.output?.text
+                if (!text.isNullOrEmpty()) onChunk(text)
+            }
+            .blockLast()
+
+        val finish = last?.result?.metadata?.finishReason
+        if (finish.equals(REFUSAL, ignoreCase = true)) {
+            StreamRefused(category = null)
+        } else {
+            // 스트리밍에서는 프로바이더가 usage 를 안 줄 수 있다. 스트리밍 경로는 usage 를
+            // 집계에 쓰지 않으므로 0 으로 둔다 — 하네스는 비스트리밍 explain() 으로 잰다.
+            StreamCompleted(last?.let { usageOf(it) } ?: ProviderUsage(0, 0, 0, 0))
+        }
+    } catch (e: Exception) {
+        log.warn("$name stream failed", e)
+        StreamFailed("${e::class.simpleName}: ${e.message}")
+    }
+
     // public 이다(companion 자체를 private 로 두지 않는다) — Task 6 리뷰가 요구한
     // "매핑은 손으로 조립한 ChatResponse 로 직접 테스트할 수 있어야 한다" 를 만족하려면
     // SpringAiResponseMappingTest 가 SpringAiExplanationProvider.toProviderResult 를
@@ -96,27 +128,35 @@ class SpringAiExplanationProvider(
             val explanationText = parsed.at("/explanation").asText()
             if (explanationText.isNullOrBlank()) return Failed("structured content had no explanation field")
 
-            val usage = response.metadata.usage
             return Answered(
                 explanation = Explanation(
                     explanation = explanationText,
                     citations = parsed.at("/citations").map { it.asText() },
                 ),
-                usage = ProviderUsage(
-                    // usage.nativeUsage 는 프로바이더마다 콘크리트 타입이 다르다
-                    // (Anthropic 은 com.anthropic.models.messages.Usage — javap 로 확인).
-                    // 그걸 직접 캐스팅하는 대신, spring-ai-model 의 최상위 Usage 인터페이스가
-                    // 이미 노출하는 getCacheReadInputTokens()/getCacheWriteInputTokens() 를
-                    // 쓴다 — AnthropicChatModel.getDefaultUsage(...) 가 nativeUsage 에서
-                    // 캐시 토큰을 뽑아 DefaultUsage 의 이 필드에 채워 넣는 것까지 바이트코드로
-                    // 확인했다. OpenAI 계열은 캐시 생성 토큰 개념이 없어 이 필드가 null 로
-                    // 남고(OpenAiChatModel.getDefaultUsage 확인), 여기서 0L 로 떨어진다 —
-                    // 캐스팅이 없으니 ClassCastException 도 날 수 없다.
-                    cacheReadTokens = usage.cacheReadInputTokens ?: 0L,
-                    cacheCreationTokens = usage.cacheWriteInputTokens ?: 0L,
-                    inputTokens = (usage.promptTokens ?: 0).toLong(),
-                    outputTokens = (usage.completionTokens ?: 0).toLong(),
-                ),
+                usage = usageOf(response),
+            )
+        }
+
+        /**
+         * `ChatResponse` 에서 usage 를 뽑는다. `explain()`(`toProviderResult`) 과
+         * `stream()` 이 같은 로직을 쓴다 — 두 벌 두지 않는다.
+         */
+        private fun usageOf(response: ChatResponse): ProviderUsage {
+            val usage = response.metadata.usage
+            return ProviderUsage(
+                // usage.nativeUsage 는 프로바이더마다 콘크리트 타입이 다르다
+                // (Anthropic 은 com.anthropic.models.messages.Usage — javap 로 확인).
+                // 그걸 직접 캐스팅하는 대신, spring-ai-model 의 최상위 Usage 인터페이스가
+                // 이미 노출하는 getCacheReadInputTokens()/getCacheWriteInputTokens() 를
+                // 쓴다 — AnthropicChatModel.getDefaultUsage(...) 가 nativeUsage 에서
+                // 캐시 토큰을 뽑아 DefaultUsage 의 이 필드에 채워 넣는 것까지 바이트코드로
+                // 확인했다. OpenAI 계열은 캐시 생성 토큰 개념이 없어 이 필드가 null 로
+                // 남고(OpenAiChatModel.getDefaultUsage 확인), 여기서 0L 로 떨어진다 —
+                // 캐스팅이 없으니 ClassCastException 도 날 수 없다.
+                cacheReadTokens = usage.cacheReadInputTokens ?: 0L,
+                cacheCreationTokens = usage.cacheWriteInputTokens ?: 0L,
+                inputTokens = (usage.promptTokens ?: 0).toLong(),
+                outputTokens = (usage.completionTokens ?: 0).toLong(),
             )
         }
     }
