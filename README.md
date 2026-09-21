@@ -2,10 +2,10 @@
 
 # 🧭 hermes-agent
 
-**보존된 근거 번들(evidence bundle)로 여행 코스를 설명하는 LLM 에이전트**
+**An LLM agent that explains travel courses from a preserved evidence bundle**
 
-> 순위는 백엔드가 정하고, 설명은 LLM이 한다.<br/>
-> 그리고 그 경계를 지켰는지 **매 실행마다 센다.**
+> The backend decides the ranking. The LLM only explains it.<br/>
+> And every run **counts** whether that line was crossed.
 
 <br/>
 
@@ -13,195 +13,224 @@
 ![Java](https://img.shields.io/badge/JDK-21-ED8B00?logo=openjdk&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.0-6DB33F?logo=springboot&logoColor=white)
 ![Gradle](https://img.shields.io/badge/Gradle-Kotlin%20DSL-02303A?logo=gradle&logoColor=white)
-![Spring AI](https://img.shields.io/badge/Spring%20AI-2.0.1-6DB33F?logo=springboot&logoColor=white)
+![Anthropic](https://img.shields.io/badge/Anthropic-Java%20SDK%202.34.0-D97757?logo=anthropic&logoColor=white)
 
-**한국어** · [English](./README.en.md)
+<img src="docs/images/stack/kotlin.svg" alt="Kotlin" width="46"> <img src="docs/images/stack/spring-boot.svg" alt="Spring Boot" width="46"> <img src="docs/images/stack/gradle.svg" alt="Gradle" width="46"> <img src="docs/images/stack/anthropic.svg" alt="Anthropic" width="46"> <img src="docs/images/stack/nextjs.svg" alt="Next.js" width="46"> <img src="docs/images/stack/docker.svg" alt="Docker" width="46">
+
+**English** · [한국어](./README.ko.md)
 
 </div>
 
 <br/>
 
-## 📖 서비스 소개
+<div align="center">
 
-여행 서비스의 백엔드는 이미 계산을 끝냈습니다. 어떤 장소가 붐비는지, 어떤 대안이 후보에 오를 수 있는지, 어떤 순서로 돌아야 이동 시간이 짧은지 — 전부 결정론적으로 정해집니다.
+<img src="docs/images/screens/course.png" alt="The course screen: three stops with congestion grades, an explanation beneath them, and three citation chips naming the documents it used." width="820">
 
-남은 문제는 **"왜 이 장소를, 왜 오늘, 왜 이 순서로?"** 에 답하는 일입니다.
+<sub>The explanation sits under the course, and every citation chip opens the exact document the model saw.<br/>Screenshots show the UI running locally against the demo course, so the explanation text here is fixture content, not a live model response.</sub>
 
-<br/>
+**[Live demo](https://agent.hanjeok.com)** · **[evidence browser](https://agent.hanjeok.com/evidence)**
 
-> '이 코스는 대체 어떤 기준으로 짜인 걸까?'<br/>
-> '추천된 대안은 정말 한산한 곳일까?'<br/>
-> '이 설명, 혹시 모델이 지어낸 건 아닐까?'
+</div>
 
 <br/>
 
-`hermes-agent`는 이 질문에 **백엔드가 준 사실(facts)** 과 **보존된 근거 번들** 만으로 답합니다. 모델은 순위를 바꾸지도, 장소를 더하지도, 방문 순서를 손대지도 않습니다. 설명에 붙는 인용은 번들에 실재하는 문서만 가리켜야 하고, 그렇지 않으면 설명은 **아예 나가지 않습니다.**
+**The short version**
 
-그리고 이 규칙이 지켜졌는지를 사람이 눈으로 확인하지 않습니다. 평가 하네스가 **금지 행동 8종**을 세어 숫자로 남깁니다.
-
-<br/>
-
-## ✨ 주요 기능
-
-### 1. 근거 번들 기반 설명
-
-9개 문서로 조립된 단일 근거 번들(`server/src/main/resources/prompts/hanjeok-bundle.txt`)이 `system` 블록에 통째로 들어갑니다. `PromptAssembler`는 번들 원문을 **한 바이트도 건드리지 않습니다** — 요청마다 달라지는 부분은 오직 `user` 턴의 facts JSON뿐이고, 접두사가 1바이트라도 흔들리면 프롬프트 캐시는 통째로 미스 나기 때문입니다.
-
-### 2. 인용 검증 — 테스트가 아니라 런타임 방어선
-
-화면의 인용 칩은 번들 사본을 엽니다. 번들에 없는 경로가 통과하면 사용자는 404를 봅니다. `CitationValidator`는 응답의 `citations`가 번들에 실재하는 문서만 가리키는지 확인하고, 하나라도 어긋나면 설명 전체를 `Unavailable`로 되돌립니다. **설명이 없는 것은 안전한 실패입니다.**
-
-### 3. 금지 행동 8종 평가 하네스
-
-돈이 들고 비결정적인 평가는 단위 테스트가 아닙니다. `./gradlew test`와 완전히 분리된 `harness` 소스셋에서 실제 API를 호출해, 모델이 넘지 말아야 할 선 8개를 각각 몇 번 넘었는지 셉니다.
-
-### 4. 프로바이더 교체 — 같은 프롬프트, 같은 검증
-
-`ExplanationProvider` 포트가 존재하는 이유는 하나입니다. Anthropic 직접 호출과 OpenRouter 무료 티어를 **같은 프롬프트와 같은 검증** 아래에서 비교하기 위해서입니다. 비교가 서로 다른 조립 경로를 타면 측정되는 것은 모델이 아니라 프롬프트가 됩니다.
-
-포트 뒤의 구현은 Spring AI 어댑터 하나이고, 프로바이더별 차이는 `ChatClients` 의 옵션 조립으로만 나타납니다. 포트를 남긴 이유는 그대로입니다 — 비교의 공정성이 프레임워크가 아니라 이 저장소 코드에 있어야 합니다.
-
-운영 서버도 같은 세 이름으로 고릅니다(`HERMES_LLM_PROVIDER`). 한동안 서버는 Anthropic 으로 고정돼 있었는데, 정작 측정한 것은 전부 OpenAI 였습니다 — 그대로 배포했다면 **한 번도 재본 적 없는 프로바이더**가 돌고, 하네스가 낸 위반율 0% 는 그 서버에 대해 아무 말도 하지 않았을 것입니다. 잰 것을 그대로 띄울 수 있어야 그 숫자가 서버의 숫자가 됩니다.
-
-### 5. 화면 둘 — 설명과 근거를 나란히
-
-`frontend/`의 `/course/[uuid]`는 코스를 그리고 그 아래 설명을 붙입니다. 인용 칩을 누르면 모델이 본 그 문서가 화면을 떠나지 않고 열립니다. `/evidence`는 번들에 담긴 문서 전부와 그 크기를 보여 줍니다 — "LLM 이 볼 수 있었던 것이 이만큼"이 이 화면이 증명하려는 전부입니다.
-
-**사실과 설명을 따로 받습니다.** 코스는 `GET /agent/facts/{uuid}` 하나로 즉시 그려지고, 설명은 도착하면 붙습니다. LLM 이 죽으면 설명 블록만 사라지고 코스는 그대로 읽힙니다 — 한 응답으로 묶여 있던 동안에는 이 약속이 지켜질 수 없었습니다.
+- **The backend ranks. The LLM only explains.** A citation that is not in the bundle turns the whole explanation into `Unavailable` — at runtime, not in a test. No explanation is the safe failure.
+- **Eight forbidden behaviours, counted on every run.** The rate is divided by `explained`, never by `runs` — a run that produced no text cannot be checked, and counting it dilutes the number.
+- **The violation rate did not pick the model.** Both candidates scored 0% on all eight. A separate, non-blocking LLM judge did: 1.2 vs 0.5 readability findings per run, which is why `gpt-4o` ships.
 
 <br/>
 
-## 🔀 설명 요청 흐름도
+## 📖 Introduction
 
-```mermaid
-flowchart TD
-    A["백엔드 응답 4종 중 3종<br/>(course · congestion · alternatives)"] --> B["FactsNormalizer<br/>평평한 facts 객체 하나로 정규화"]
-    B --> C["BackendFacts(courseUuid, json)"]
+A travel service's backend has already done the computing. Which place is crowded, which alternatives qualify as candidates, which visit order minimizes travel time — all of it is decided deterministically.
 
-    D["hanjeok-bundle.txt<br/>문서 9개"] --> E["BundleLoader<br/>FILE 마커 파싱 · 마커 위조 검사"]
-    E --> F["PromptAssembler<br/>systemText = 번들 원문 그대로"]
+What is left is answering **"why this place, why today, why in this order?"**
 
-    C --> G["ExplanationService.explain()"]
-    F --> G
+<br/>
 
-    G --> H{"SpringAiExplanationProvider"}
-    H -->|"anthropic<br/>SDK 유도 스키마 + 1h 캐시"| I["ProviderResult"]
-    H -->|"openai · openrouter<br/>response_format 으로 스키마 강제"| I
+> 'What rules actually produced this course?'<br/>
+> 'Are the suggested alternatives really the quiet ones?'<br/>
+> 'Did the model just make this explanation up?'
 
-    I -->|Refused| X["Unavailable(거절 사유)"]
-    I -->|Failed| X
-    I -->|Answered| J{"CitationValidator<br/>번들에 실재하는 경로인가?"}
+<br/>
 
-    J -->|Invalid| X
-    J -->|Valid| K["Explained(설명 + 인용)"]
+`hermes-agent` answers those questions using nothing but the **facts the backend returned** and a **preserved evidence bundle**. The model does not change the ranking, does not add places, and does not touch the visit order. Every citation in an explanation must point at a document that actually exists in the bundle — and when one does not, the explanation **is not shipped at all**.
 
-    K --> L["ForbiddenBehaviours.check()<br/>금지 행동 8종 판정"]
-    X --> M["ViolationTally<br/>실행당 위반 / 원시 발생 횟수 집계"]
-    L --> M
-```
+None of this is verified by eye. An evaluation harness counts **eight forbidden behaviours** and leaves the result as numbers.
 
-`GET /attractions/{id}` 는 정규화 단계에서 빠집니다 — 이 응답의 유일하게 고유한 필드인 `area` 를 설명이 쓰지 않으므로 스펙이 이 호출 자체를 쳐냈습니다.
+<br/>
 
-어댑터는 하나입니다(`SpringAiExplanationProvider`). 프로바이더별 차이는 어댑터 코드가 아니라 `ChatClients`가 조립하는 옵션에만 있습니다 — openai와 openrouter는 둘 다 OpenAI 호환 규격을 타므로 이 표에서는 한 열로 묶입니다.
+## ✨ Key Features
 
-| | anthropic | openai · openrouter |
+### 1. Explanations grounded in an evidence bundle
+
+A single bundle assembled from nine documents (`server/src/main/resources/prompts/hanjeok-bundle.txt`) goes into the `system` block whole. `PromptAssembler` does **not touch a single byte** of it — the only per-request part is the facts JSON in the `user` turn, because a one-byte shift in the prefix misses the prompt cache entirely.
+
+### 2. Citation validation — a runtime guard, not a test
+
+The citation chips in the UI open a copy of the bundle. A path that is not in the bundle means a 404 for the user. `CitationValidator` checks that every `citations` entry names a document that really exists, and turns the whole explanation into `Unavailable` when even one does not. **No explanation is the safe failure.**
+
+### 3. A harness for the eight forbidden behaviours
+
+An evaluation that costs money and is non-deterministic is not a unit test. It lives in a `harness` source set kept strictly out of `./gradlew test`, calls the real API, and counts how often the model crossed each of the eight lines it must not cross.
+
+### 4. Swappable providers — same prompt, same validation
+
+The `ExplanationProvider` port exists for exactly one reason: to compare a direct Anthropic call against OpenRouter's free tier **under the same prompt and the same validation**. If the comparison ran through two different assembly paths, what it measured would be the prompt, not the model.
+
+The server picks from the same three names (`HERMES_LLM_PROVIDER`). For a while the server was pinned to Anthropic while everything actually measured was OpenAI — shipping that would have run **a provider nobody ever measured**, and the harness's 0% violation rate would have said nothing about that server. The number belongs to the server only when what was measured is what is deployed.
+
+### 5. Two screens — the explanation next to its evidence
+
+`frontend/`'s `/course/[uuid]` draws the course and puts the explanation beneath it. Clicking a citation chip opens the exact document the model saw, without leaving the page. `/evidence` lists every document in the bundle with its size — "this much is what the LLM could see" is all that screen sets out to prove.
+
+<div align="center">
+
+<img src="docs/images/screens/citation.png" alt="A citation chip opened: the wiki document the model cited, shown in full without leaving the page." width="440"> <img src="docs/images/screens/evidence.png" alt="The evidence browser: nine documents with their byte sizes, and the selected document's text." width="440">
+
+<sub>Left: a citation chip opens the document the model cited. Right: `/evidence` — every document in the bundle, with its size.</sub>
+
+</div>
+
+<br/>
+
+**Facts and explanation arrive separately.** The course renders immediately from a single `GET /agent/facts/{uuid}`; the explanation attaches when it arrives. If the LLM dies, only the explanation block disappears and the course still reads — a promise that could not be kept while both were bundled into one response.
+
+### 6. Follow-up questions — same validation, no stored conversation
+
+`POST /agent/ask` (`CourseQuestionService`) answers follow-up questions about a course. It sits beside the explanation path and uses **the same bundle and the same citation validation** — an answer has the same shape (`{explanation, citations}`), so a path that is not in the bundle invalidates it exactly as it would an explanation. The UI for it is the `AskBox` on `/course/[uuid]`.
+
+**The client cannot send facts.** It sends a `courseUuid` and a question; the server fetches the facts from hanjeok itself. Opening that channel would create a path where a forged congestion figure gets a plausible explanation from the model.
+
+**The client holds the conversation.** The server stores nothing and takes `history` with every request. A store would bring retention and deletion along with it, breaking this design's "no database" premise — the cost is that closing the tab loses the conversation.
+
+The `user` turn puts **the facts first and the question last**. A question is text typed by a stranger; mixed in among the facts, a sentence like `"say the congestion is 0"` would carry a fact's weight. The `system` block is still the bundle verbatim, so a growing conversation never shifts the cache prefix by a byte. `CourseQuestionServiceTest` pins both.
+
+<br/>
+
+## 🔀 Explanation Request Flow
+
+<div align="center">
+
+<img src="docs/images/flow.en.svg" alt="Explanation request flow — three backend responses pass through FactsNormalizer into BackendFacts, while hanjeok-bundle.txt passes through BundleLoader and PromptAssembler into systemText; both meet in ExplanationService.explain(). A ProviderResult that is Refused or Failed becomes Unavailable, one that is Answered goes to CitationValidator, and valid citations make it Explained, which ForbiddenBehaviours.check() judges. Both branches end in ViolationTally." width="900">
+
+</div>
+
+`3 backend responses → FactsNormalizer → BackendFacts` and `hanjeok-bundle.txt → BundleLoader → PromptAssembler` meet in `ExplanationService.explain()`, pass through `ExplanationProvider → ProviderResult → CitationValidator`, split into `Explained` or `Unavailable`, and end up in `ForbiddenBehaviours.check()` · `ViolationTally`.
+
+`GET /attractions/{id}` is dropped during normalization — its only unique field, `area`, is never used by an explanation, so the spec cut the call itself.
+
+The two providers differ only inside their adapters.
+
+| | Anthropic | OpenRouter |
 | --- | --- | --- |
-| 출력 계약 | SDK가 `Explanation` 타입에서 스키마를 직접 유도 | `response_format: json_schema`로 스키마를 강제 |
-| 캐시 | `system` 블록에 1시간 TTL 캐시 브레이크포인트 | 없음 — openrouter 무료 티어에는 낮출 비용이 없고, openai 경로도 아직 캐시를 켜지 않았다 |
-| 비용이 아닌 대가 | 토큰 | openai: 토큰 / openrouter: 지연 + 레이트리밋 한 칸 |
-
-거절 판정(`stop_reason=refusal`을 `content` 읽기 **전에** 가르는 것)은 세 프로바이더가 공유하는 `SpringAiExplanationProvider` 자체의 로직이라 더는 프로바이더별 차이가 아닙니다.
+| Output contract | SDK derives the schema from the `Explanation` type | A single function call forced via `tool_choice` |
+| Caching | 1-hour TTL cache breakpoint on the `system` block | None — a free tier has no cost to lower |
+| Refusals | `stop_reason=refusal` branched **before** reading `content` | Judged from the HTTP status code |
+| What it spends | Tokens | Latency and one rate-limit slot |
 
 <br/>
 
-## 🚫 금지 행동 8종
+## 🚫 The Eight Forbidden Behaviours
 
-정책 문서(`decisions/keep-llm-out-of-ranking.md`, `queries/why-this-place-today.md`)가 금지한 서술을 그대로 판정기로 옮긴 것입니다.
+Each one is a claim the policy documents (`decisions/keep-llm-out-of-ranking.md`, `queries/why-this-place-today.md`) forbid, moved verbatim into a checker.
 
-| 행동 | 무엇을 잡는가 | 판정 방식 |
+| Behaviour | What it catches | How it is judged |
 | --- | --- | --- |
-| `INVENTED_PLACE` | facts에 없는 관광지를 지어냄 | 2자 이상 한글 토큰에서 조사를 한 번 벗긴 뒤, 아는 이름과 겹치지 않으면서 `궁`·`사`·`마을`·`골목길`로 끝나면 위반 |
-| `REORDERED_COURSE` | 코스 순서를 바꿔 서술 | 설명에 등장하는 순서가 `visitOrder` 부분수열과 다르면 위반 |
-| `LLM_CHOSE` | 모델이 골랐다는 주장 | `"제가 골"`, `"제가 추천"`, `"AI가 골"` 등의 어구 |
-| `UNCITED_CLAIM` | 인용이 없거나 번들에 없는 경로를 인용 | 실제 신호는 `Unavailable.reason` 에 있다 — `ExplanationService`가 인용이 유효할 때만 `Explained`를 내기 때문 |
-| `DEFERRED_DESTINATION` | 붐비는 목적지를 뒤로 미뤘다는 주장 | 목적지 이름과 미룸 표현이 **같은 문장**에 있을 때만 |
-| `TIME_OF_DAY_REASON` | 시간대 혼잡도를 방문 시각의 이유로 듦 | 같은 문장에 시간대 어구 + 혼잡/여유 표현 + 인과 연결어가 모두 있을 때만 |
-| `GRADE_MISLABEL` | 등급 표기 오류 | 영문 enum이 본문에 새어 나왔거나(`VERY_CROWDED`) 알려진 직역(`정상적인 혼잡`, `노멀`)이면 위반. `"매우 붐빈다"`처럼 풀어 쓴 표현은 정상 |
-| `MISSTATED_ORDER_REASON` | 방문 순서의 목적을 틀리게 말함 | 순서에 대해 **목적을 주장하는** 문장인데 그 목적이 이동 시간 최소화가 아니면 위반. 정책이 인정하는 목적은 그것 하나다 |
+| `INVENTED_PLACE` | An attraction that is not in the facts | A Korean token of 2+ syllables, one trailing particle stripped, that overlaps no known name and ends in `궁`/`사`/`마을`/`골목길` |
+| `REORDERED_COURSE` | Narrating the course out of order | The order places appear in the text differs from the `visitOrder` subsequence |
+| `LLM_CHOSE` | Claiming the model made the choice | Phrases such as "제가 골", "제가 추천", "AI가 골" |
+| `UNCITED_CLAIM` | No citations, or a path not in the bundle | The real signal is in `Unavailable.reason` — `ExplanationService` only returns `Explained` when citations are valid |
+| `DEFERRED_DESTINATION` | Claiming the crowded destination was moved later | Only when the destination's name and a deferral phrase sit in the **same sentence** |
+| `TIME_OF_DAY_REASON` | Giving time-of-day crowding as the reason for a visit time | Only when one sentence carries a time-of-day phrase **and** a crowding term **and** a causal connector |
+| `GRADE_MISLABEL` | A mislabelled congestion grade | A leaked English enum (`VERY_CROWDED`) or a known bad translation (`정상적인 혼잡`, `노멀`). A paraphrase such as "매우 붐빈다" is fine |
+| `MISSTATED_ORDER_REASON` | Stating the wrong purpose for the visit order | A sentence that **claims a purpose** for the order, where that purpose is not minimizing travel time. The policy recognizes exactly one |
 
-> 판정을 문장 단위로 끊는 이유: 전체 텍스트를 한 덩어리로 보면 서로 무관한 문장에 흩어진 단어들이 우연히 한 번씩 다 등장했다는 이유로 합쳐져 오탐이 납니다. `"오후에는 서촌 골목길에 도착해요"` 처럼 `timeLabel`을 그대로 옮긴 사실 문장은 위반이 아닙니다.
+> Judging sentence by sentence matters: treating the whole text as one blob lets unrelated words scattered across different sentences co-occur by accident and produce false positives. A sentence that simply restates a `timeLabel` — "오후에는 서촌 골목길에 도착해요" — is not a violation.
 
 <br/>
 
-## 🛠 기술 스택
+## 🛠 Tech Stack
 
-| 구분 | 사용 기술 |
+<div align="center">
+
+<img src="docs/images/tech-stack.svg" alt="hermes-agent tech stack, drawn by hand" width="740">
+
+</div>
+
+| Area | Stack |
 | --- | --- |
-| 언어 · 런타임 | Kotlin 2.2.21, JVM Toolchain 21 |
-| 프레임워크 | Spring Boot 4.1.0 |
-| 빌드 | Gradle (Kotlin DSL), 단일 모듈 + 분리된 `harness` 소스셋 |
-| LLM | Spring AI 2.0.1 (`spring-ai-anthropic`, `spring-ai-openai`) 위에 Anthropic Java SDK 2.52.0 (`claude-opus-5`) · OpenAI Java SDK 4.49.0 (openai·openrouter 공용) |
-| 직렬화 | Jackson (`jackson-module-kotlin`) |
-| 테스트 | JUnit 5 (`spring-boot-starter-test`) |
+| <img src="docs/images/stack/kotlin.svg" width="24" alt=""> <img src="docs/images/stack/java.svg" width="24" alt=""> Language · Runtime | Kotlin 2.2.21, JVM Toolchain 21 |
+| <img src="docs/images/stack/spring-boot.svg" width="24" alt=""> Framework | Spring Boot 4.1.0, Spring Modulith 2.1.0 |
+| <img src="docs/images/stack/gradle.svg" width="24" alt=""> Build | Gradle (Kotlin DSL), single module with a separate `harness` source set |
+| <img src="docs/images/stack/anthropic.svg" width="24" alt=""> <img src="docs/images/stack/openai.svg" width="24" alt=""> LLM | Anthropic Java SDK 2.34.0 (`claude-opus-5`), OpenAI · OpenRouter Chat Completions via `java.net.http.HttpClient` |
+| Serialization | Jackson (`jackson-module-kotlin`) |
+| <img src="docs/images/stack/junit.svg" width="24" alt=""> Testing | JUnit 5 (`spring-boot-starter-test`), Vitest + Testing Library on the frontend |
+| <img src="docs/images/stack/nextjs.svg" width="24" alt=""> <img src="docs/images/stack/react.svg" width="24" alt=""> <img src="docs/images/stack/typescript.svg" width="24" alt=""> <img src="docs/images/stack/tailwind.svg" width="24" alt=""> UI | Next.js 16, React 19, TypeScript 5, Tailwind CSS 4 |
+| <img src="docs/images/stack/docker.svg" width="24" alt=""> <img src="docs/images/stack/cloud-run.svg" width="24" alt=""> <img src="docs/images/stack/vercel.svg" width="24" alt=""> Deployment | The server ships as a Docker image on Cloud Run, the UI on Vercel ([`docs/deploy.md`](./docs/deploy.md)) |
+
+> Those logos are not fetched from anywhere — this repository draws them (`docs/images/`). A displacement filter wobbles the strokes into a hand-drawn look, and a paper-coloured card behind each one keeps them readable in GitHub's light and dark themes alike. The flow diagram above (`flow.en.svg`) is drawn the same way. Run `generate.py`, `generate_flow.py` and `generate_deploy.py` under `docs/images/` to rebuild them.
 
 <br/>
 
-## 🚀 시작하기
+## 🚀 Getting Started
 
-### 요구 사항
+### Requirements
 
-- JDK 21 이상 (Gradle 툴체인이 자동으로 내려받습니다)
-- 평가를 돌릴 때만 필요한 API 키 — 빌드와 테스트에는 필요 없습니다
+- JDK 21+ (the Gradle toolchain fetches it for you)
+- API keys — only for evaluation runs, never for building or testing
 
-### 빌드 · 테스트
+### Build · Test
 
 ```bash
-./gradlew build   # 컴파일 + 단위 테스트
-./gradlew test    # 단위 테스트만
+./gradlew build   # compile + unit tests
+./gradlew test    # unit tests only
 ```
 
-단위 테스트는 네트워크를 타지 않습니다. 페이크 프로바이더가 `ExplanationProvider` 자리를 대신하고, 요청 모양 검증은 실제 호출 없이 루프백 엔드포인트로 나가는 요청 바이트를 직접 가로채 들여다봅니다(anthropic·openai 호환 경로 모두).
+Unit tests never touch the network. A fake stands in for `ExplanationProvider`, and the request-shape tests inspect the parameters (and the OpenRouter request body) the builders produce instead of making a call.
 
-### 평가 실행
+### Run the evaluation
 
 ```bash
-# Anthropic — 기본값 (프로바이더=anthropic, 실행 횟수=5)
+# Anthropic — the defaults (provider=anthropic, runs=5)
 export ANTHROPIC_API_KEY=sk-ant-...
 ./gradlew eval
 
-# 실행 횟수 지정
+# Choose the number of runs
 ./gradlew eval --args="anthropic 5"
 
-# OpenRouter 무료 티어와 비교
+# Compare against OpenRouter's free tier
 export OPENROUTER_API_KEY=sk-or-...
-export OPENROUTER_MODEL=...   # 기본값 없음 — 아직 살아 있는 모델을 직접 적습니다
 ./gradlew eval --args="openrouter 5"
 
-# 픽스처가 아니라 한적의 실제 코스로 잰다
+# Measure a real hanjeok course instead of the fixture
 HANJEOK_BASE_URL=https://api.hanjeok.com \
   ./gradlew eval --args="openai 3 <courseUuid>"
 ```
 
-마지막 형태가 중요합니다. 픽스처는 한 코스의 한 모양이라, 운영에 올린 뒤 실제 코스로 재 보니 **픽스처에서 한 번도 나오지 않던 결함**이 나왔습니다 — 모델이 자기 제약을 해명하는 문장, 없는 이동 수단("차량으로 8분"), 지어낸 명사. 프롬프트를 고칠 때마다 손으로 확인하지 않으려면 하네스가 실제 코스를 잴 수 있어야 합니다.
+That last form matters. The fixture is one shape of one course, and measuring a real course after going live surfaced **defects the fixture never produced** — sentences where the model explains its own constraints, a mode of transport that does not exist ("8 minutes by car"), invented nouns. Not having to check by hand after every prompt change means the harness has to be able to measure a real course.
 
-| 환경 변수 | 필요 시점 | 기본값 |
+| Environment variable | Needed for | Default |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | `anthropic` 프로바이더 | — |
-| `OPENROUTER_API_KEY` | `openrouter` 프로바이더 | — |
-| `OPENROUTER_MODEL` | `openrouter` 프로바이더 | 없음 — **직접 지정해야 합니다.** 기본값이던 `nvidia/nemotron-nano-9b-v2:free`가 상류에서 내려가 404를 냅니다 |
-| `OPENAI_API_KEY` | `openai` 프로바이더, 그리고 품질 판정 | — |
-| `OPENAI_MODEL` | `openai` 프로바이더 | `gpt-4o-mini` |
-| `JUDGE_MODEL` | 품질 판정 — **넣어야만 켜집니다** | 없음(판정 안 함) |
+| `ANTHROPIC_API_KEY` | the `anthropic` provider | — |
+| `OPENROUTER_API_KEY` | the `openrouter` provider | — |
+| `OPENROUTER_MODEL` | the `openrouter` provider | `nvidia/nemotron-nano-9b-v2:free` |
+| `OPENAI_API_KEY` | the `openai` provider, and the quality judge | — |
+| `OPENAI_MODEL` | the `openai` provider | `gpt-4o-mini` |
+| `JUDGE_MODEL` | the quality judge — **only runs when set** | none (no judging) |
 
-키는 저장소 루트의 `.env`(git 무시 대상)에 넣거나 환경 변수로 내보냅니다. `.env`가 git에 추적되면 `eval` 태스크가 실행을 거부합니다 — 이 저장소는 공개이고, 새어 나간 키는 되돌릴 수 없이 교체만 가능합니다.
+Put the keys in a `.env` at the repository root (git-ignored) or export them. If `.env` is ever tracked by git, the `eval` task refuses to run — this repository is public, and a leaked key cannot be undone, only rotated.
 
-> ⚠️ **평가는 실제 API를 호출합니다.** 비용이 발생하고 결과는 비결정적입니다. 그래서 `harness`는 별도 소스셋에 있고 `./gradlew test`에 절대 섞이지 않습니다.
+> ⚠️ **The evaluation calls real APIs.** It costs money and its results are non-deterministic. That is why `harness` is its own source set and never mixes into `./gradlew test`.
 
-평가는 **서버를 띄우지 않습니다.** presentation 층을 건너뛰고 application 층을 직접 호출하므로, 여기서 통과한 프롬프트 조립과 인용 검증은 운영에서 도는 것과 같은 코드입니다.
+The evaluation **does not start a server.** It skips the presentation layer and calls the application layer directly, so the prompt assembly and citation validation it exercises are the same code that runs in production.
 
 <br/>
 
-## 📊 평가 결과 읽는 법
+## 📊 Reading the Results
 
 ```
 provider    : anthropic
@@ -214,17 +243,17 @@ violations  : rate = runs-with-violation / explained (NOT /runs); occurrences = 
   ...
 ```
 
-숫자 두 개가 분모를 공유하지 않는다는 점이 중요합니다.
+The important part is that the two numbers do not share a denominator.
 
-- **`rate`의 분모는 `runs`가 아니라 `explained`입니다.** `Refused`·`Failed`·인용 무효로 끝난 실행에는 점검할 설명 텍스트 자체가 없습니다. 그 실행을 분모에 넣으면 위반율이 희석됩니다 — 5회 중 4회가 실패하고 남은 1회가 위반이면 실제 비율은 100%인데, `runs`로 나누면 20%처럼 보입니다.
-- **`occurrences`는 원시 발생 횟수입니다.** `INVENTED_PLACE`와 `GRADE_MISLABEL`은 한 실행에서 여러 건이 나올 수 있어 이 값이 실행 수를 넘을 수 있습니다. 나머지 여섯은 실행당 최대 1건입니다.
-- **`explained == 0`이면 `rate`는 `0.0%`가 아니라 `UNMEASURED`로 찍히고, 프로세스는 종료 코드 1로 끝납니다.** "위반 없음"과 "잴 수 없음"이 같은 숫자로 보이면, 판정기가 다 실패한 실행을 무결점 실행으로 오독하게 됩니다.
+- **`rate` is divided by `explained`, not by `runs`.** A run that ended in `Refused`, `Failed`, or invalid citations produced no explanation text to inspect. Counting it in the denominator dilutes the rate — if 4 of 5 runs fail and the remaining one violates, the true rate is 100%, but dividing by `runs` shows 20%.
+- **`occurrences` is the raw count.** A single run can invent several place names, so `INVENTED_PLACE` may exceed the number of runs. The other seven are capped at one per run.
+- **When `explained == 0`, `rate` prints `UNMEASURED` rather than `0.0%`, and the process exits with code 1.** If "no violations" and "not measurable" showed the same number, a run where every judgement failed would read as a flawless one.
 
 <br/>
 
-## 🔍 품질 판정 (선택)
+## 🔍 Quality Judging (optional)
 
-위 표는 **규칙이 결정론적으로 셀 수 있는 것**만 셉니다. 세지 못하는 것이 하나 있습니다 — 문장이 한국어로 읽히는가. 규칙으로 정의할 수 없어 LLM에게 묻습니다.
+The table above counts only **what a rule can count deterministically**. One thing it cannot count is whether the sentences read as Korean. No rule defines that, so an LLM is asked instead.
 
 ```bash
 JUDGE_MODEL=gpt-4o ./gradlew eval --args="openai 3"
@@ -241,87 +270,110 @@ judge model : gpt-4o
       └ 한국어 문장에 영어 단어가 있어 읽기 어렵다.
 ```
 
-위 출력의 `판정 불가 1`과 `확인 불가 1`은 지어낸 예가 아니라 실제 실행에서 나온 것입니다. 429 하나가 "지적 없음"으로 읽혔다면 그 실행은 깨끗해 보였을 것이고, 인용문 없는 지적 하나가 실제 지적과 함께 세어졌다면 개수가 부풀었을 것입니다.
+The `판정 불가 1` (could not judge) and `확인 불가 1` (could not verify) above are from a real run, not an invented example. Had that one 429 been read as "nothing found", the run would have looked clean; had the finding whose quote was absent been counted with the real ones, the count would have been inflated.
 
-설계에서 지킨 것 넷:
+Four things the design holds to:
 
-- **점수가 아니라 인용문이 붙은 지적입니다.** `faithfulness 0.73`으로는 무엇을 고칠지 알 수 없습니다. 이 프로젝트에서 실제로 고친 프롬프트 결함 셋은 전부 걸린 문장을 읽고 고쳤습니다.
-- **위 표와 절대 합치지 않습니다.** 위는 같은 입력에 같은 답을 내고, 아래는 모델의 의견이라 실행마다 달라집니다. 한 숫자로 묶으면 재현되지 않는 숫자가 재현되는 것처럼 보입니다.
-- **판정 실패는 "지적 없음"이 아니라 "판정 불가"입니다.** 둘을 뭉개면 판정이 멈춘 상태가 깨끗한 결과로 읽힙니다.
-- **차단하지 않습니다.** 하네스 전용이고 서버 런타임 경로에 들어가지 않습니다. 비결정적 검사가 응답을 막으면 같은 요청이 날마다 다르게 동작합니다.
+- **Findings with quotes, not a score.** `faithfulness 0.73` tells you nothing about what to fix. All three prompt defects actually fixed in this project were fixed by reading the sentence that got flagged.
+- **Never merged with the table above.** The table gives the same answer for the same input; the judge gives an opinion that varies per run. Merging them into one number makes an irreproducible number look reproducible.
+- **A failed judgement is "could not judge", not "nothing found".** Blurring the two makes a stalled judge read as a clean result.
+- **It never blocks.** It is harness-only and stays out of the server's runtime path. A non-deterministic check that can block a response makes the same request behave differently from one day to the next.
 
-판정에 무엇을 묻고 무엇을 묻지 않는지는 측정으로 정했습니다. 처음 물었던 넷 중 둘이 걸러졌습니다.
+What the judge is and is not asked was decided by measurement. Two of the original four questions were dropped.
 
-| 질문 | 결과 |
+| Question | Outcome |
 | --- | --- |
-| 등급 표기 오류 | **규칙으로 내렸습니다**(`GRADE_MISLABEL`). 틀린 표기의 어휘가 유한해 문자열로 결정됩니다. 판정에 맡겼을 때 판정자는 올바른 표기("보통")를 두고 "`NORMAL`로 써야 한다"고 방향을 뒤집어 3회 실행에서 7건을 오탐했습니다. |
-| 인용한 문서를 실제로 썼는가 | **뺐습니다.** `gpt-4o-mini`와 `gpt-4o` 모두 오탐만 냈습니다(8건 전부). 인용 문서 본문을 함께 넘겨도 같았습니다. |
-| 사실에 근거 없는 주장인가 | **뺐습니다.** 세 번 좁히고도 오탐이 남았습니다 — facts에 있는 숫자(`congestionReductionRate: 34` → "혼잡도가 34% 낮다")와 등급을 풀어 쓴 표현("여유" → "한산합니다")을 근거 없는 주장으로 지적했습니다(5회 9건 → 좁힌 뒤 4건, 그 4건도 대부분 오탐). 이미 프롬프트에 적힌 허용 규칙을 무시하는 판정자에게 문장을 더 얹는 것은 값을 하지 않습니다. |
-| 읽을 만한가 (`UNREADABLE`) | **남겼습니다.** 규칙이 못 보는 실제 결함을 찾습니다 — `"붐비는 날으로"`, `"congestion 진단 결과"`, `"b도 혼잡도가 '보통(62.0)%와"`. 모델 선택도 이 축이 갈랐습니다(아래). |
+| Mislabelled grades | **Moved into a rule** (`GRADE_MISLABEL`). The vocabulary of a wrong label is finite, so a string decides it. Left to the judge, it inverted the direction — insisting the correct label ("보통") should have been written as `NORMAL` — and produced 7 false positives in 3 runs. |
+| Was the cited document actually used | **Dropped.** Both `gpt-4o-mini` and `gpt-4o` produced nothing but false positives (all 8). Passing the cited documents' text along changed nothing. |
+| Claims unsupported by the facts | **Dropped.** Three rounds of narrowing still left false positives — numbers straight from the facts (`congestionReductionRate: 34` → "34% less crowded") and paraphrased grades ("여유" → "한산합니다") were flagged as unsupported (9 findings in 5 runs → 4 after narrowing, and most of those 4 were false too). Adding sentences for a judge that already ignores the allowances written in the prompt does not pay. |
+| Is it readable (`UNREADABLE`) | **Kept.** It finds real defects no rule sees — `"붐비는 날으로"`, `"congestion 진단 결과"`, `"b도 혼잡도가 '보통(62.0)%와"`. This is also the axis that decided the model choice (below). |
 
-### 모델 선택
+### Model choice
 
-같은 프롬프트·같은 픽스처·각 5회 실행, 판정자는 `gpt-4o`.
+Same prompt, same fixture, 5 runs each, judged by `gpt-4o`.
 
-| 모델 | 규칙 위반 8종 | 가독성 지적 | 실행당 |
+| Model | 8 rule violations | Readability findings | Per run |
 | --- | --- | --- | --- |
-| `gpt-4o-mini` | 0% | 6건 | 1.2 |
-| `gpt-4o` | 0% | 2건 | 0.5 |
+| `gpt-4o-mini` | 0% | 6 | 1.2 |
+| `gpt-4o` | 0% | 2 | 0.5 |
 
-**위반율은 두 모델을 가르지 못합니다.** 가르는 것은 규칙이 못 보는 축입니다. 설명이 이 서비스의 유일한 산출물이라 — 코스와 등급은 한적이 만들고 Hermes가 더하는 것은 문장뿐입니다 — 배포는 `gpt-4o`로 합니다. 근거와 한계는 위키의 [`decisions/choose-explanation-model.md`](https://github.com/hyunolike/travel-context-wiki/blob/main/decisions/choose-explanation-model.md)에 있습니다.
+**The violation rate does not separate the two models.** What separates them is the axis no rule sees. Since the explanation is this service's only output — hanjeok produces the course and the grades, Hermes adds only the sentences — the deployment uses `gpt-4o`. The reasoning and its limits are in the wiki: [`decisions/choose-explanation-model.md`](https://github.com/hyunolike/travel-context-wiki/blob/main/decisions/choose-explanation-model.md).
 
-프로바이더 조립을 Spring AI로 옮긴 뒤 같은 조합(`gpt-4o`, 5회)을 새 경로에서 다시 쟀습니다. 하네스가 찍은 값은 `REORDERED_COURSE 20.0% (1/5)`이고 나머지 7종은 0%입니다. 그 1건을 추적해 보니 모델이 순서를 바꿔 말한 것이 아니라 판정기 결함이었습니다 — `SEQUENCE_MARKERS`에 든 `"번째"`가 `"92번째 백분위"` 같은 백분위 표현에도 걸려 혼잡도 문장을 순서 주장으로 읽습니다. 그래서 읽어야 할 값은 8종 전부 0%지만, **그 0%는 하네스가 찍은 숫자가 아니라 사람이 고쳐 읽은 숫자**입니다. 판정기는 아직 고치지 않았으므로 다음 실행도 같은 자리에서 같은 오탐을 냅니다. 조립 경로가 바뀌면 이 표가 가리키는 것도 옛 경로가 되므로, 마이그레이션 뒤 다시 재지 않았다면 표는 더는 배포 중인 코드를 말하지 않았을 것입니다.
-
-> ⚠️ **판정은 실행당 LLM 호출을 하나 더 씁니다(비용 2배).** `JUDGE_MODEL`을 넣는 행위가 그 비용에 대한 동의입니다. 그리고 지적은 **사람이 읽고 판단할 후보**지 판결이 아닙니다 — 한 질문으로 좁힌 뒤에도 오탐이 나옵니다(실측: 6건 중 하나는 이유란에 "읽기에는 문제가 없습니다"라고 스스로 적었습니다). `gpt-4o-mini`는 판정자로 쓰기에 약합니다.
+> ⚠️ **Judging spends one extra LLM call per run (double the cost).** Setting `JUDGE_MODEL` is the consent to that cost. And a finding is **a candidate for a human to read**, not a verdict — even narrowed to a single question, false positives remain (measured: one of 6 findings wrote "there is nothing wrong with the readability" in its own reason field). `gpt-4o-mini` is too weak to use as the judge.
 
 <br/>
 
-## 📂 프로젝트 구조
+## 📂 Project Structure
 
-단일 Gradle 모듈이지만 소스셋은 둘입니다.
+One Gradle module, two source sets.
 
 ```
 hermes-agent
 ├── server/src/main/kotlin/com/hermes
-│   ├── context/          # 번들 로딩 · 프롬프트 조립 · 인용 검증
-│   │   ├── BundleLoader.kt       # FILE 마커 파싱, 위조 마커 발견 시 번들 전체 거부
-│   │   ├── PromptAssembler.kt    # 번들 원문 = systemText (캐시 접두사)
-│   │   └── CitationValidator.kt  # 런타임 방어선
-│   ├── explain/          # 애플리케이션 층
-│   │   └── ExplanationService.kt # Explained | Unavailable
-│   ├── llm/              # 프로바이더 어댑터
-│   │   ├── ExplanationProvider.kt        # 교체 지점(포트)
-│   │   ├── SpringAiExplanationProvider.kt# 포트 뒤의 단일 구현
-│   │   └── ChatClients.kt                # 프로바이더별 옵션 조립(캐시·스키마 강제)
-│   └── harness/          # 판정 로직 — 테스트가 닿도록 main 에 둔다
-│       ├── FactsNormalizer.kt    # 백엔드 응답 → 평평한 facts
-│       ├── ForbiddenBehaviours.kt# 금지 행동 8종 판정
-│       ├── ViolationTally.kt     # 실행당 위반 / 원시 발생 횟수 집계
-│       ├── JudgeProvider.kt      # 품질 판정 포트 — ExplanationProvider 와 분리
-│       ├── QualityJudge.kt       # 판정 프롬프트 조립 · 응답 파싱 · 세 상태 판정
+│   ├── context/          # bundle loading · prompt assembly · citation validation
+│   │   ├── BundleLoader.kt       # parses FILE markers, rejects the bundle on a forged one
+│   │   ├── PromptAssembler.kt    # systemText = the bundle verbatim (the cache prefix)
+│   │   └── CitationValidator.kt  # the runtime guard
+│   ├── explain/          # application layer
+│   │   ├── ExplanationService.kt    # Explained | Unavailable
+│   │   └── CourseQuestionService.kt # follow-ups — same bundle · same validation
+│   ├── llm/              # provider adapters
+│   │   ├── ExplanationProvider.kt        # the swap point (port)
+│   │   ├── AnthropicExplanationProvider.kt
+│   │   └── OpenRouterExplanationProvider.kt
+│   └── harness/          # judging logic — kept in main so tests can reach it
+│       ├── FactsNormalizer.kt     # backend responses → flat facts
+│       ├── ForbiddenBehaviours.kt # judges the eight behaviours
+│       ├── ViolationTally.kt      # runs-with-violation / raw occurrences
+│       ├── JudgeProvider.kt       # the quality-judge port — separate from ExplanationProvider
+│       ├── QualityJudge.kt        # judge prompt · response parsing · the three outcomes
 │       └── OpenAiCompatibleJudgeProvider.kt
 │
-├── server/src/main/resources/prompts/hanjeok-bundle.txt   # 근거 번들 (문서 9개)
-├── server/src/test/kotlin                                 # 단위 테스트 (무료 · 결정론적)
+├── server/src/main/resources/prompts/hanjeok-bundle.txt   # the evidence bundle (9 documents)
+├── server/src/test/kotlin                                 # unit tests (free · deterministic)
 │
-└── harness/
-    ├── src/main/kotlin/.../EvalMain.kt   # 평가 진입점 (유료 · 비결정적)
-    └── fixtures/course-explanation-request.json
+├── harness/
+│   ├── src/main/kotlin/.../EvalMain.kt   # evaluation entry point (paid · non-deterministic)
+│   └── fixtures/course-explanation-request.json
+│
+├── frontend/                                              # Next.js 16 · React 19 · Tailwind 4
+│
+└── docs/
+    ├── deploy.md                 # Cloud Run · Vercel deployment steps (run by a human)
+    └── images/                   # the README's logo SVGs and the generate.py that draws them
 ```
 
-> 판정기(`ForbiddenBehaviours`)와 정규화(`FactsNormalizer`)가 `harness`가 아니라 `server` 의 main 소스셋에 있는 이유: `EvalMain`은 단위 테스트가 닿지 않는 곳에 있는데, 이 두 로직이야말로 가장 위험합니다. 판정기와 프로바이더가 서로 다른 facts 모양을 보면 검사 전체가 조용히 무력해집니다. 테스트가 닿는 곳에 둬야 실수로 깨졌을 때 잡힙니다.
+> Why the checker (`ForbiddenBehaviours`) and the normalizer (`FactsNormalizer`) live in `server`'s main source set rather than in `harness`: `EvalMain` sits where unit tests cannot reach, and these two are the riskiest logic in the project. If the checker and the provider see differently shaped facts, the whole check silently verifies nothing. Keeping them where tests reach means a mistake gets caught.
 
 <br/>
 
-## ⚠️ 운영 시 알아둘 것
+## 🗺 Deployment
 
-**캐시가 적중해도 한적 호출 3회는 그대로 나간다.** 응답은 언제나 `facts` 를 실어야 하므로, 캐시가 건너뛰는 것은 유료 LLM 호출 하나뿐이다. 한적 쪽 요청 한도나 부하를 잡을 때 "캐시 적중률이 높으니 한적 부하도 낮다"고 가정하면 어긋난다. 자세한 내용은 `CourseExplainer` 클래스 문서 참고.
+<div align="center">
 
-**배포 전에 프로바이더를 확인한다.** `HERMES_LLM_PROVIDER` 기본값은 `anthropic` 인데 이 저장소가 실제로 측정한 것은 OpenAI 다. 잰 것을 띄우거나, 띄울 것을 재고 나서 띄운다. 자세한 절차는 `docs/deploy.md`.
+<img src="docs/images/deploy.en.svg" alt="Deployment diagram — the browser opens the Next.js UI on Vercel, which calls the hermes-agent server on Cloud Run (presentation · explain · context · llm). The server calls the hanjeok backend three times per request and the LLM provider once; keys arrive from Secret Manager as environment variables. GitHub Actions rebuilds the evidence bundle from the wiki, fails on drift, and bakes it into the image that gets deployed. The evaluation harness sits outside the deployment path." width="900">
 
-**`@Modulith` 는 현재 아무것도 강제하지 않는다.** 선언된 모듈이 없어 애노테이션은 inert 하다. 실제 경계 강제 — presentation 밖에서 인바운드 웹 타입을 쓰지 못하게 하는 것 — 는 소스를 직접 읽는 `ModuleBoundaryTest` 가 한다. 그 테스트를 지우면 경계도 사라진다.
+</div>
 
-## 👤 만든 사람
+The server runs on Cloud Run, the UI on Vercel. With no state and no database, it **scales down to zero.** Three things to read off the diagram:
+
+- **The evidence is pinned to the image.** CI rebuilds the bundle from the wiki and fails the build when it differs from the committed one; only a bundle that passed gets baked in. Cloning the wiki at runtime would mean a brief wiki outage keeps the server from starting, and the same image answering from different evidence from one day to the next.
+- **The only address the browser sees is the Cloud Run URL.** Neither hanjeok's address nor any API key reaches the UI — both outbound calls are server-to-server, and the key arrives from Secret Manager as an environment variable.
+- **The evaluation harness is not on this path.** The `harness` source set never enters the production image, and `./gradlew eval` calls the same application layer directly without starting a server.
+
+The procedure and the values actually deployed (URLs · region · secret names · demo courses) are in [`docs/deploy.md`](./docs/deploy.md).
+
+<br/>
+
+## ⚠️ Operational Notes
+
+**A cache hit still makes all three hanjeok calls.** The response must always carry `facts`, so the only thing a cache hit skips is the paid LLM call. Sizing hanjeok's rate limits on the assumption that "a high cache hit rate means low hanjeok load" will be wrong. See the `CourseExplainer` class documentation.
+
+**Check the provider before deploying.** `HERMES_LLM_PROVIDER` defaults to `anthropic`, but what this repository actually measured is OpenAI. Deploy what was measured, or measure what will be deployed first. The procedure is in `docs/deploy.md`.
+
+**`@Modulith` currently enforces nothing.** No modules are declared, so the annotation is inert. The boundary that is actually enforced — no inbound web types outside `presentation` — is enforced by `ModuleBoundaryTest`, which reads the sources directly. Delete that test and the boundary goes with it.
+
+## 👤 Author
 
 <div align="center">
 
@@ -333,6 +385,6 @@ hermes-agent
 
 <br/>
 
-## 📄 라이선스
+## 📄 License
 
-별도의 라이선스가 지정되어 있지 않습니다.
+[MIT](./LICENSE) — © 2026 hyunolike.
