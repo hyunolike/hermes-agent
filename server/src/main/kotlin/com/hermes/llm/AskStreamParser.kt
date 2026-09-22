@@ -54,6 +54,14 @@ class AskStreamParser {
         when (where) {
             Where.OBJECT -> if (c == '"') startString(Target.KEY)
             Where.AFTER_KEY -> if (c == ':') where = Where.VALUE
+            // 스키마가 strict 라 키는 "citations" 와 "explanation" 둘뿐이다. 여기 없는
+            // key 값이 오면(예: 필드를 하나 늘렸는데 이 파서를 안 고쳤을 때) 이 when 은
+            // 아무 분기도 타지 않는다 — where 가 VALUE 에 멈춘 채 나머지 문자가 전부
+            // 구조 문자 취급으로 버려지고, citations·explanation 이 끝내 안 닫혀 complete
+            // 가 거짓으로 남는다. 실패 방향은 닫힌 쪽(fail closed)이다: 알 수 없는
+            // 응답을 "truncated response" 로 끝내지, 모르는 필드를 조용히 무시하고
+            // 나머지를 파싱하지 않는다. 현재 strict 스키마 아래에서는 도달하지 않는다
+            // — 도달하려면 모델이 스키마에 없는 키를 내야 한다.
             Where.VALUE -> when {
                 key == "citations" && c == '[' -> where = Where.ARRAY
                 key == "explanation" && c == '"' -> startString(Target.BODY)
@@ -84,6 +92,12 @@ class AskStreamParser {
                 digits.append(c)
                 if (digits.length == 4) {
                     hex = null
+                    // toInt(16) 은 넉 자가 16진수가 아니면 NumberFormatException 을 던지고
+                    // 여기서 그대로 전파된다 — 잡아서 대체 문자로 넘기지 않는다. 실패
+                    // 방향은 닫힌 쪽(fail closed)이다: 깨진 이스케이프를 조용히 삼켜
+                    // enclosing 문자를 흘리기보다는, 호출자가 전체 스트림을 실패로 닫게
+                    // 둔다. 모델이 실제로 내는 `\uXXXX` 는 JSON 문법상 항상 16진수 넉
+                    // 자라, 이 경로는 현재 strict 스키마 아래에서는 도달하지 않는다.
                     put(digits.toString().toInt(16).toChar(), body)
                 }
             }

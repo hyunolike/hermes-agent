@@ -106,6 +106,21 @@ class AskStreamParserTest {
     }
 
     @Test
+    fun `모르는 최상위 키가 오면 나머지를 삼키고 미완으로 끝난다`() {
+        // 지금은 도달하지 않는다(스키마가 strict) — 미래에 필드를 하나 늘리고 이
+        // 파서를 안 고치면 이렇게 된다는 것을 고정해 둔다. 조용히 무시하고 나머지를
+        // 파싱하는 대신 fail closed 로 끝나야, 그 실패가 "truncated response" 로
+        // 진단 가능하게 드러난다.
+        val (events, parser) = run(
+            """{"unknownField":"x","citations":["a.md"],"explanation":"y"}""",
+        )
+
+        assertThat(events.filterIsInstance<CitationsClosed>()).isEmpty()
+        assertThat(body(events)).isEmpty()
+        assertThat(parser.complete).isFalse()
+    }
+
+    @Test
     fun `공백과 줄바꿈이 끼어도 된다`() {
         val (events, parser) = run("{\n  \"citations\" : [ \"a.md\" ] ,\n  \"explanation\" : \"x\"\n}")
 
