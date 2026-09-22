@@ -8,6 +8,7 @@ import com.hermes.context.PromptAssembler
 import com.hermes.explain.CourseQuestionService
 import com.hermes.facts.FactsSource
 import com.hermes.facts.HanjeokClient
+import com.hermes.facts.HanjeokUnavailableException
 import com.hermes.llm.ExplanationProvider
 import com.hermes.llm.ProviderResult
 import com.hermes.llm.ProviderUsage
@@ -36,7 +37,7 @@ class AskStreamControllerTest {
     private val factsExecutor = Executors.newFixedThreadPool(2)
 
     /** AskControllerTest 의 것과 같은 사실. 두 경로가 같은 코스를 본다. */
-    private inner class FakeClient : HanjeokClient {
+    private open inner class FakeClient : HanjeokClient {
         override fun course(courseUuid: String): JsonNode = mapper.readTree(
             """{"targetDate":"2026-09-12","title":"제목","congestionReductionRate":34,"summary":"요약",
                 "recommendedDate":null,
@@ -133,12 +134,62 @@ class AskStreamControllerTest {
     }
 
     @Test
+    fun `사실을 못 받으면 불투명한 unavailable 만 나가고 사유는 새지 않는다`() {
+        val broken = object : FakeClient() {
+            override fun course(courseUuid: String): JsonNode =
+                throw HanjeokUnavailableException("SENTINEL COURSE 404 DETAIL")
+        }
+        val mvc = MockMvcBuilders
+            .standaloneSetup(
+                AskStreamController(
+                    FactsSource(broken, 15, factsExecutor),
+                    CourseQuestionService(
+                        PromptAssembler(bundle),
+                        CitationValidator(bundle),
+                        StreamingProvider(emptyList()),
+                    ),
+                    AskStreamExecutor(Executors.newSingleThreadExecutor()),
+                    "gpt-4o",
+                ),
+            )
+            .setControllerAdvice(ApiErrorHandler())
+            .build()
+
+        val started = mvc
+            .perform(
+                post("/agent/ask/stream")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"courseUuid":"abc","question":"왜 이 순서예요?"}"""),
+            )
+            .andExpect(request().asyncStarted())
+            .andReturn()
+        val body = mvc.perform(asyncDispatch(started)).andReturn().response.getContentAsString(Charsets.UTF_8)
+
+        assertThat(body).contains("event:unavailable").contains("EXPLANATION_UNAVAILABLE")
+        assertThat(body).doesNotContain("SENTINEL COURSE 404 DETAIL")
+    }
+
+    @Test
     fun `질문이 비어 있으면 스트림을 열지 않고 400`() {
         mvc(StreamingProvider(emptyList()))
             .perform(
                 post("/agent/ask/stream")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{"courseUuid":"abc","question":"   "}"""),
+            )
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `courseUuid 가 비어 있으면 스트림을 열지 않고 400`() {
+        // 200 SSE unavailable 로 내리면 클라이언트가 재시도한다 — 몇 번을 보내도 같은
+        // 이유로 실패하는 요청이라 재시도 폭풍이 된다. AskController(비스트리밍)는
+        // 이 경우를 이미 400으로 막는다.
+        mvc(StreamingProvider(emptyList()))
+            .perform(
+                post("/agent/ask/stream")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"courseUuid":"   ","question":"왜 이 순서예요?"}"""),
             )
             .andExpect(status().isBadRequest)
     }
