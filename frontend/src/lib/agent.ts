@@ -184,7 +184,11 @@ export async function askCourseStream(
       }
     }
   } catch {
-    // 연결이 도중에 끊겼다. 아래에서 종결 이벤트를 채운다.
+    // 연결이 도중에 끊겼다. 여기엔 이름 있는 프레임의 JSON.parse 실패도 포함된다 —
+    // 의도적이다. 깨진 프레임을 건너뛰고 계속 읽으면, 그게 delta 라면 답의 한 조각이
+    // 조용히 사라진 채로 done 이 뒤따라와 "완결된 답"으로 확정돼 버린다. done 은
+    // 완결을 뜻한다는 계약을 지키려면 여기서 멈추고 실패로 닫아야 한다 — "설명 없음은
+    // 안전한 실패"라는 이 서비스 전체의 원칙과 같다. 아래에서 종결 이벤트를 채운다.
   }
 
   if (!terminated) onEvent(deltas > 0 ? { kind: 'aborted' } : { kind: 'unavailable' })

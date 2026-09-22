@@ -106,4 +106,42 @@ describe('askCourseStream', () => {
       { kind: 'aborted' },
     ])
   })
+
+  it('깨진 프레임은 건너뛰지 않고 스트림을 끝낸다 — 빈 조각이 난 답을 done 으로 확정하지 않는다', async () => {
+    const events = await collect(
+      fetchStreaming([
+        encode(
+          'event:citations\ndata:{"citations":["a.md"]}\n\n' +
+            'event:delta\ndata:{"text":"본문"}\n\n' +
+            'event:delta\ndata:not-json-at-all\n\n' +
+            'event:done\ndata:{"generatedAt":"t","model":"gpt-4o"}\n\n',
+        ),
+      ]),
+    )
+
+    expect(events).toEqual([
+      { kind: 'citations', citations: ['a.md'] },
+      { kind: 'delta', text: '본문' },
+      { kind: 'aborted' },
+    ])
+  })
+
+  it('data: 가 깨진 이름 없는 프레임은 JSON.parse 에 닿지 않고 무시된다', async () => {
+    const events = await collect(
+      fetchStreaming([
+        encode(
+          'event:citations\ndata:{"citations":["a.md"]}\n\n' +
+            'data:not-json-at-all\n\n' +
+            'event:delta\ndata:{"text":"본문"}\n\n' +
+            'event:done\ndata:{"generatedAt":"t","model":"gpt-4o"}\n\n',
+        ),
+      ]),
+    )
+
+    expect(events).toEqual([
+      { kind: 'citations', citations: ['a.md'] },
+      { kind: 'delta', text: '본문' },
+      { kind: 'done', generatedAt: 't', model: 'gpt-4o' },
+    ])
+  })
 })
