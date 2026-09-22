@@ -9,6 +9,7 @@ import com.hermes.explain.CourseExplainer
 import com.hermes.explain.CourseQuestionService
 import com.hermes.explain.ExplanationCache
 import com.hermes.explain.ExplanationService
+import com.hermes.explain.presentation.AskStreamExecutor
 import com.hermes.facts.FactsSource
 import com.hermes.facts.HanjeokClient
 import com.hermes.facts.RestHanjeokClient
@@ -117,4 +118,8 @@ class HermesConfig {
 
     @Bean
     fun demoCourses(@Value("\${hermes.demo.courses}") raw: String): DemoCourses = DemoCourses.parse(raw)
+
+    /** 스트림은 I/O 대기라 스레드를 조금 넉넉히 둔다. Cloud Run 인스턴스당 동시 요청이 적다. */
+    @Bean
+    fun askStreamExecutor(): AskStreamExecutor = AskStreamExecutor(Executors.newFixedThreadPool(8))
 }
