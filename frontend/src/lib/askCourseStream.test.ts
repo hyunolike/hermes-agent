@@ -67,6 +67,23 @@ describe('askCourseStream', () => {
     expect(events.at(-1)).toEqual({ kind: 'unavailable' })
   })
 
+  it('서버가 aborted 를 보내면 그 이름 그대로 종결 이벤트가 된다', async () => {
+    // AskStreamController.kt 가 내는 이벤트 이름("aborted")과 여기 case 라벨이
+    // 어긋나면, 서버가 본문 도중 실패를 알려도 클라이언트는 이름 없는 프레임으로
+    // 여기고 무시한 뒤 스트림이 끊길 때의 fallback(aborted/unavailable)에 기댄다 —
+    // 우연히 같은 결과가 나올 뿐 이 case 문은 죽은 코드가 된다.
+    const events = await collect(
+      fetchStreaming([
+        encode(
+          'event:delta\ndata:{"text":"본문"}\n\n' +
+            'event:aborted\ndata:{"code":"EXPLANATION_ABORTED"}\n\n',
+        ),
+      ]),
+    )
+
+    expect(events).toEqual([{ kind: 'delta', text: '본문' }, { kind: 'aborted' }])
+  })
+
   it('서버가 unavailable 을 보내면 그것으로 끝나고 덧붙이지 않는다', async () => {
     const events = await collect(
       fetchStreaming([encode('event:unavailable\ndata:{"code":"EXPLANATION_UNAVAILABLE"}\n\n')]),
