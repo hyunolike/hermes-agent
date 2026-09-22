@@ -131,6 +131,20 @@ class AskStreamGateTest {
     }
 
     @Test
+    fun `인용은 유효한데 본문이 한 글자도 없으면 done 이 아니라 unavailable`() {
+        // 블로킹 경로(SpringAiExplanationProvider)는 빈 본문을 Failed 로 본다. 여기서
+        // DoneEvent 를 내면 두 경로가 같은 입력({"citations":[...],"explanation":""})에
+        // 다르게 답하고, 화면은 인용 칩만 있고 글자 없는 "답변완료" 버블을 그린다.
+        val (g, out) = gate()
+
+        g.accept(CitationsClosed(listOf(known)))
+        g.finish(parseComplete = true)
+
+        assertThat(deltas(out)).isEmpty()
+        assertThat(out).containsExactly(CitationsEvent(listOf(known)), UnavailableEvent("empty answer"))
+    }
+
+    @Test
     fun `끝난 뒤에 온 이벤트는 무시한다`() {
         val (g, out) = gate()
 

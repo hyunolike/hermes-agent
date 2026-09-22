@@ -65,6 +65,14 @@ class AskStreamGate(
             fail("truncated response")
             return
         }
+        // 인용은 유효했는데 본문이 한 글자도 없었던 경우다. 그대로 DoneEvent 를 내면
+        // 빈 설명이 "확정된 답"으로 화면에 박히고, 다음 질문의 history 에 answer: "" 로
+        // 실려 간다. 블로킹 경로(SpringAiExplanationProvider)는 빈 본문을 Failed 로
+        // 보므로, 여기서 통과시키면 두 경로가 같은 입력에 다르게 답한다.
+        if (deltas == 0) {
+            fail("empty answer")
+            return
+        }
         closed = true
         emit(DoneEvent)
     }
@@ -72,7 +80,7 @@ class AskStreamGate(
     fun fail(reason: String) {
         if (closed) return
         closed = true
-        held.clear()
+        held.clear() // 방어적 정리 — closed 가드가 이미 held 를 다시 읽지 못하게 막지만, 나중에 그 가드가 사라져도 여기서 한 번 더 막는다.
         emit(if (deltas == 0) UnavailableEvent(reason) else AbortedEvent(reason))
     }
 
