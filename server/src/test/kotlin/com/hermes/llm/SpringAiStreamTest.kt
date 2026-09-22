@@ -58,4 +58,34 @@ class SpringAiStreamTest {
             assertThat(end).isInstanceOf(StreamFailed::class.java)
         }
     }
+
+    /**
+     * Fix round 1, Important 리뷰 대응 — 실제 OpenAI 거절의 진짜 모양으로 만든 SSE.
+     *
+     * `finish_reason: "refusal"` 은 openai-java 의 `ChatCompletionChunk.Choice.
+     * FinishReason` 에 아예 없는 값이다(STOP/LENGTH/TOOL_CALLS/CONTENT_FILTER/
+     * FUNCTION_CALL 뿐 — javap 로 확인). 실제 거절은 `finish_reason: "stop"` 에 델타의
+     * 별도 `refusal` 필드로 온다. 이 델타가 `id`/`object`/`created`/`model` 없이도
+     * 파싱되는지는 이미 위 `chunk()` 로 검증됐으므로 여기서는 생략하지 않는다 — 실제
+     * 거절 스트림의 형태를 그대로 흉내 낸다: 첫 청크가 `delta.refusal` 을 나르고,
+     * 마지막 청크가 content 없이 `finish_reason: "stop"` 으로 닫는다.
+     */
+    private val refusalSse =
+        """data: {"id":"c1","object":"chat.completion.chunk","created":1,"model":"gpt-4o","choices":[{"index":0,"delta":{"refusal":"I can't help with that."},"finish_reason":null}]}""" +
+            "\n\n" +
+            """data: {"id":"c1","object":"chat.completion.chunk","created":1,"model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}""" +
+            "\n\n" +
+            "data: [DONE]\n\n"
+
+    @Test
+    fun `진짜 OpenAI 거절 모양(델타의 refusal 필드, finish_reason=stop)도 StreamRefused 로 닫힌다`() {
+        CapturingEndpoint(CannedResponse(200, "text/event-stream", refusalSse)).use { endpoint ->
+            val chunks = mutableListOf<String>()
+
+            val end = provider(endpoint).stream("sys", "user") { chunks += it }
+
+            assertThat(chunks).describedAs("거절은 content 가 비어 onChunk 가 불리면 안 된다").isEmpty()
+            assertThat(end).isInstanceOf(StreamRefused::class.java)
+        }
+    }
 }

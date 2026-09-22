@@ -6,6 +6,7 @@ import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.model.ChatResponse
+import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.prompt.Prompt
 
 /**
@@ -48,24 +49,34 @@ class SpringAiExplanationProvider(
     /**
      * 실제 스트리밍. Reactor 는 여기 가둔다 — 포트는 콜백과 블로킹 반환만 안다.
      *
-     * 거절은 마지막 조각의 finishReason 으로 온다. 거절 응답은 content 가 비어 있어
-     * onChunk 가 불리지 않으므로, 게이트는 delta 없이 unavailable 로 닫는다.
+     * 거절 판정은 `isRefusal` 을 쓴다(아래 설명 참고). **마지막 조각만 보면 안 된다** —
+     * 루프백으로 실측했다: Spring AI 의 `OpenAiChatModel.internalStream` 은 원본 SSE
+     * 청크를 누적 병합하지 않고 청크마다 독립적으로 `ChatResponse` 를 만들어 내보낸다
+     * (`OpenAiChatModel$ChunkMerger.mergeChoices` 가 새 델타의 content/refusal 을
+     * 이전 것 위에 이어붙이지 않는 것까지 바이트코드로 확인). 그래서 OpenAI 호환
+     * 거절은 `refusal` 필드를 실은 조각과 `finish_reason: "stop"` 을 실은 마지막(대개
+     * 빈) 조각이 서로 다를 수 있다 — 마지막 조각만 보면 그 사이 조각의 `refusal` 을
+     * 놓친다. 그래서 조각마다 `isRefusal` 을 확인해 하나라도 걸리면 거절로 닫는다.
+     * 거절이면 content 가 비어 있어(OpenAI 는 `refusal` 필드로, 본문 content 는
+     * 비운다) onChunk 가 불리지 않으므로, 게이트는 delta 없이 unavailable 로 닫는다.
      */
     override fun stream(systemText: String, userText: String, onChunk: (String) -> Unit): StreamEnd = try {
         var last: ChatResponse? = null
+        var refused = false
         chatClient
             .prompt(Prompt(listOf(SystemMessage(systemText), UserMessage(userText))))
             .stream()
             .chatResponse()
             .doOnNext { response ->
                 last = response
-                val text = response.result?.output?.text
+                val generation = response.result
+                if (generation != null && isRefusal(generation)) refused = true
+                val text = generation?.output?.text
                 if (!text.isNullOrEmpty()) onChunk(text)
             }
             .blockLast()
 
-        val finish = last?.result?.metadata?.finishReason
-        if (finish.equals(REFUSAL, ignoreCase = true)) {
+        if (refused) {
             StreamRefused(category = null)
         } else {
             // 스트리밍에서는 프로바이더가 usage 를 안 줄 수 있다. 스트리밍 경로는 usage 를
@@ -99,14 +110,9 @@ class SpringAiExplanationProvider(
             val generation = response.result ?: return Failed("response carried no generation")
 
             // 거절을 content 읽기 전에 가른다. 거절은 HTTP 200 에 빈 content 로 오므로
-            // 본문을 무조건 읽는 코드는 여기서 깨진다.
-            //
-            // 구 코드가 싣던 stopDetails.category 는 여기까지 오지 않는다 — Spring AI 는
-            // StopReason.toString() 을 finishReason 문자열로만 노출한다(AnthropicChatModel
-            // 을 javap 로 확인함: lambda$buildGenerations$17 이 stopReason.toString() 을
-            // 그대로 finishReason 에 싣는다). 사유 해상도는 떨어지지만 Refused 와 Failed 를
-            // 가르는 판단에는 이것으로 충분하다.
-            if (generation.metadata?.finishReason.equals(REFUSAL, ignoreCase = true)) {
+            // 본문을 무조건 읽는 코드는 여기서 깨진다. 판정은 `isRefusal` 로 뺐다 —
+            // 그 함수의 설명 참고.
+            if (isRefusal(generation)) {
                 return Refused(category = null)
             }
 
@@ -135,6 +141,36 @@ class SpringAiExplanationProvider(
                 ),
                 usage = usageOf(response),
             )
+        }
+
+        /**
+         * 거절 판정. `explain()`(`toProviderResult`) 과 `stream()` 이 같은 로직을 쓴다.
+         *
+         * finishReason 만으로는 부족하다 — 두 프로바이더가 거절을 싣는 자리가 다르다.
+         * javap 로 직접 확인했다(Fix round 1, Important 리뷰 대응):
+         *
+         * - Anthropic: `com.anthropic.models.messages.StopReason` 에 `REFUSAL` 상수가
+         *   실존한다. `AnthropicChatModel` 이 `StopReason.toString()` 을 finishReason
+         *   문자열로 그대로 싣는 것은 이미 확인돼 있었다(위 커밋 로그 참고) — 그래서
+         *   finishReason == "refusal" 비교는 Anthropic 에서는 원래도 맞았다.
+         * - OpenAI 호환: `com.openai.models.chat.completions.ChatCompletionChunk.Choice.
+         *   FinishReason` 에는 STOP/LENGTH/TOOL_CALLS/CONTENT_FILTER/FUNCTION_CALL 뿐이고
+         *   "refusal" 값 자체가 없다 — 실제 거절은 finish_reason="stop" 에 message 의
+         *   별도 `refusal` 필드로 온다(스트리밍은 `delta.refusal`). `OpenAiChatModel.
+         *   buildGeneration` 이 이 필드를 `AssistantMessage.metadata["refusal"]` 로
+         *   옮겨 놓는 것을, 스트리밍 쪽은 `ChunkMerger.chunkToChatCompletion` 이
+         *   `delta.refusal()` 을 병합해 같은 `buildGeneration` 을 타는 것까지 바이트코드로
+         *   확인했다 — call() 과 stream() 이 같은 변환 경로를 공유한다.
+         *
+         * 그래서 finishReason == "refusal" 이 원래 맞았던 것은 Anthropic 뿐이고,
+         * OpenAI 호환 경로에서는 이 검사가 한 번도 발동한 적이 없었다(REFUSAL 이 이
+         * enum 에 없으므로) — 빈 content 가 그대로 "response carried no structured
+         * content" 의 Failed 로 떨어졌다. 두 신호를 모두 보게 고쳤다.
+         */
+        private fun isRefusal(generation: Generation): Boolean {
+            if (generation.metadata?.finishReason.equals(REFUSAL, ignoreCase = true)) return true
+            val refusal = generation.output?.metadata?.get("refusal") as? String
+            return !refusal.isNullOrBlank()
         }
 
         /**
