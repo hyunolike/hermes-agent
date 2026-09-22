@@ -2,19 +2,54 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as agent from '@/lib/agent'
+import type { AskStreamEvent, AskTurn } from '@/lib/agent'
 import { AskBox } from './AskBox'
 
-const answered = (answer: string, citations: string[] = ['concepts/course-generation-policy.md']) =>
-  ({
-    kind: 'loaded' as const,
-    value: { answer, citations, generatedAt: '2026-09-05T00:00:00Z', model: 'gpt-4o' },
+type OnEvent = (event: AskStreamEvent) => void
+type StreamImpl = (courseUuid: string, question: string, history: AskTurn[], onEvent: OnEvent) => Promise<void>
+
+const DONE = { kind: 'done' as const, generatedAt: '2026-09-05T00:00:00Z', model: 'gpt-4o' }
+
+/** 주어진 이벤트를 순서대로, 즉시 내보내는 흉내. 중간 화면을 볼 필요가 없는 테스트용. */
+const eagerStream = (...events: AskStreamEvent[]): StreamImpl =>
+  async (_courseUuid, _question, _history, onEvent) => {
+    for (const event of events) onEvent(event)
+  }
+
+/**
+ * 이벤트 사이에 멈춰 서서, 테스트가 각 이벤트 뒤 화면을 확인한 다음 `advance(i)` 로
+ * 다음 이벤트를 내보내게 하는 흉내. 실제 스트림처럼 델타가 한 번에 다 오지 않고
+ * 하나씩 도착하는 상황을 재현한다.
+ */
+function stepStream(events: AskStreamEvent[]) {
+  const gates = events.map(() => {
+    let resolve!: () => void
+    const promise = new Promise<void>((r) => {
+      resolve = r
+    })
+    return { promise, resolve }
   })
+  const impl: StreamImpl = async (_courseUuid, _question, _history, onEvent) => {
+    for (let i = 0; i < events.length; i++) {
+      onEvent(events[i])
+      if (i < events.length - 1) await gates[i].promise
+    }
+  }
+  const advance = (i: number) => gates[i]?.resolve()
+  return { impl, advance }
+}
 
 afterEach(() => vi.restoreAllMocks())
 
 describe('코스 후속 질문', () => {
   it('질문을 보내면 답과 인용이 그려진다', async () => {
-    vi.spyOn(agent, 'askCourse').mockResolvedValue(answered('이동 시간이 가장 짧아요.'))
+    vi.spyOn(agent, 'askCourseStream').mockImplementation(
+      eagerStream(
+        { kind: 'citations', citations: ['concepts/course-generation-policy.md'] },
+        { kind: 'delta', text: '이동 시간이 가장 짧아요.' },
+        DONE,
+      ),
+    )
 
     render(<AskBox courseUuid="abc" />)
     await userEvent.type(screen.getByLabelText('이 코스에 대해 더 묻기'), '왜 이 순서예요?')
@@ -29,9 +64,9 @@ describe('코스 후속 질문', () => {
   it('이전 대화를 함께 보낸다', async () => {
     // 서버가 대화를 저장하지 않으므로, 안 보내면 "거기"가 무엇인지 알 수 없다.
     const ask = vi
-      .spyOn(agent, 'askCourse')
-      .mockResolvedValueOnce(answered('이동 시간 때문이에요.'))
-      .mockResolvedValueOnce(answered('네, 붐벼요.'))
+      .spyOn(agent, 'askCourseStream')
+      .mockImplementationOnce(eagerStream({ kind: 'delta', text: '이동 시간 때문이에요.' }, DONE))
+      .mockImplementationOnce(eagerStream({ kind: 'delta', text: '네, 붐벼요.' }, DONE))
 
     render(<AskBox courseUuid="abc" />)
     const input = screen.getByLabelText('이 코스에 대해 더 묻기')
@@ -51,7 +86,7 @@ describe('코스 후속 질문', () => {
 
   it('실패한 질문도 목록에 남는다', async () => {
     // 사라지면 사용자는 자기가 뭘 물었는지도, 답이 없었다는 사실도 잃는다.
-    vi.spyOn(agent, 'askCourse').mockResolvedValue({ kind: 'unavailable', status: 503 })
+    vi.spyOn(agent, 'askCourseStream').mockImplementation(eagerStream({ kind: 'unavailable' }))
 
     render(<AskBox courseUuid="abc" />)
     await userEvent.type(screen.getByLabelText('이 코스에 대해 더 묻기'), '왜요?')
@@ -64,9 +99,9 @@ describe('코스 후속 질문', () => {
   it('실패한 답은 다음 질문의 대화 기록에 넣지 않는다', async () => {
     // 없는 답을 맥락으로 보내면 모델이 그것을 이미 한 말로 읽는다.
     const ask = vi
-      .spyOn(agent, 'askCourse')
-      .mockResolvedValueOnce({ kind: 'unavailable', status: 503 })
-      .mockResolvedValueOnce(answered('답'))
+      .spyOn(agent, 'askCourseStream')
+      .mockImplementationOnce(eagerStream({ kind: 'unavailable' }))
+      .mockImplementationOnce(eagerStream({ kind: 'delta', text: '답' }, DONE))
 
     render(<AskBox courseUuid="abc" />)
     const input = screen.getByLabelText('이 코스에 대해 더 묻기')
@@ -83,7 +118,7 @@ describe('코스 후속 질문', () => {
   })
 
   it('빈 질문은 보내지 않는다', async () => {
-    const ask = vi.spyOn(agent, 'askCourse')
+    const ask = vi.spyOn(agent, 'askCourseStream')
 
     render(<AskBox courseUuid="abc" />)
     await userEvent.type(screen.getByLabelText('이 코스에 대해 더 묻기'), '   ')
@@ -93,11 +128,103 @@ describe('코스 후속 질문', () => {
   })
 
   it('추천 질문을 누르면 그대로 묻는다', async () => {
-    const ask = vi.spyOn(agent, 'askCourse').mockResolvedValue(answered('답'))
+    const ask = vi
+      .spyOn(agent, 'askCourseStream')
+      .mockImplementation(eagerStream({ kind: 'delta', text: '답' }, DONE))
 
     render(<AskBox courseUuid="abc" />)
     await userEvent.click(screen.getByRole('button', { name: '왜 이 순서예요?' }))
 
     await waitFor(() => expect(ask.mock.calls[0][1]).toBe('왜 이 순서예요?'))
+  })
+
+  it('delta 가 올 때마다 본문이 이어 붙어 보인다', async () => {
+    const { impl, advance } = stepStream([
+      { kind: 'delta', text: '이동' },
+      { kind: 'delta', text: ' 시간이' },
+      DONE,
+    ])
+    vi.spyOn(agent, 'askCourseStream').mockImplementation(impl)
+
+    render(<AskBox courseUuid="abc" />)
+    await userEvent.type(screen.getByLabelText('이 코스에 대해 더 묻기'), '왜요?')
+    await userEvent.click(screen.getByRole('button', { name: '묻기' }))
+
+    await screen.findByText('이동')
+    advance(0)
+    await screen.findByText('이동 시간이')
+    advance(1)
+    await waitFor(() => expect(screen.queryByRole('button', { name: '묻는 중…' })).not.toBeInTheDocument())
+  })
+
+  it('citations 가 오면 본문보다 먼저 인용 칩이 보인다', async () => {
+    const { impl, advance } = stepStream([
+      { kind: 'citations', citations: ['a.md'] },
+      { kind: 'delta', text: '답' },
+      DONE,
+    ])
+    vi.spyOn(agent, 'askCourseStream').mockImplementation(impl)
+
+    render(<AskBox courseUuid="abc" />)
+    await userEvent.type(screen.getByLabelText('이 코스에 대해 더 묻기'), '왜요?')
+    await userEvent.click(screen.getByRole('button', { name: '묻기' }))
+
+    await screen.findByRole('button', { name: 'a.md' })
+    expect(screen.queryByText('답')).not.toBeInTheDocument()
+
+    advance(0)
+    await screen.findByText('답')
+    advance(1)
+    await waitFor(() => expect(screen.queryByRole('button', { name: '묻는 중…' })).not.toBeInTheDocument())
+  })
+
+  it('unavailable 이면 "답을 만들지 못했어요" 가 보이고 본문은 없다', async () => {
+    vi.spyOn(agent, 'askCourseStream').mockImplementation(eagerStream({ kind: 'unavailable' }))
+
+    render(<AskBox courseUuid="abc" />)
+    await userEvent.type(screen.getByLabelText('이 코스에 대해 더 묻기'), '왜요?')
+    await userEvent.click(screen.getByRole('button', { name: '묻기' }))
+
+    expect(await screen.findByText(/답을 만들지 못했어요/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /\.md$/ })).not.toBeInTheDocument()
+  })
+
+  it('delta 몇 개 뒤 aborted 면 받은 본문이 화면에서 사라지고 실패 문구가 보인다', async () => {
+    // 미완 문장을 설명으로 남기지 않는다 — 인용이 검증됐어도 문장은 끝나지 않았다.
+    vi.spyOn(agent, 'askCourseStream').mockImplementation(
+      eagerStream(
+        { kind: 'citations', citations: ['a.md'] },
+        { kind: 'delta', text: '이동 시간이' },
+        { kind: 'delta', text: ' 가장' },
+        { kind: 'aborted' },
+      ),
+    )
+
+    render(<AskBox courseUuid="abc" />)
+    await userEvent.type(screen.getByLabelText('이 코스에 대해 더 묻기'), '왜요?')
+    await userEvent.click(screen.getByRole('button', { name: '묻기' }))
+
+    expect(await screen.findByText(/답을 만들지 못했어요/)).toBeInTheDocument()
+    expect(screen.queryByText(/이동 시간이/)).not.toBeInTheDocument()
+  })
+
+  it('다음 질문의 history 에는 done 으로 끝난 답만 들어가고, 중단된 것은 빠진다', async () => {
+    const ask = vi
+      .spyOn(agent, 'askCourseStream')
+      .mockImplementationOnce(eagerStream({ kind: 'delta', text: '미완' }, { kind: 'aborted' }))
+      .mockImplementationOnce(eagerStream({ kind: 'delta', text: '답' }, DONE))
+
+    render(<AskBox courseUuid="abc" />)
+    const input = screen.getByLabelText('이 코스에 대해 더 묻기')
+
+    await userEvent.type(input, '첫 질문')
+    await userEvent.click(screen.getByRole('button', { name: '묻기' }))
+    await screen.findByText(/답을 만들지 못했어요/)
+
+    await userEvent.type(input, '둘째 질문')
+    await userEvent.click(screen.getByRole('button', { name: '묻기' }))
+    await screen.findByText('답')
+
+    expect(ask.mock.calls[1][2]).toEqual([])
   })
 })

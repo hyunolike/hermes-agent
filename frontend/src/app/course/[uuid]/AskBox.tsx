@@ -1,10 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { askCourse, type AskTurn } from '@/lib/agent'
+import { askCourseStream, type AskTurn } from '@/lib/agent'
 import { CitationSheet } from './CitationSheet'
 
-type Exchange = AskTurn & { citations: string[] } | { question: string; failed: true }
+type Exchange =
+  | { question: string; status: 'streaming'; citations: string[]; text: string }
+  | { question: string; status: 'answered'; answer: string; citations: string[] }
+  | { question: string; status: 'failed' }
 
 const SUGGESTIONS = ['왜 이 순서예요?', '왜 이 장소들이에요?', '다른 날이 더 나은가요?']
 
@@ -29,19 +32,39 @@ export function AskBox({ courseUuid }: { courseUuid: string }) {
 
     setAsking(true)
     setQuestion('')
-    // 이전 대화만 보낸다. 지금 질문은 따로 실린다.
-    const history: AskTurn[] = exchanges
-      .filter((exchange): exchange is AskTurn & { citations: string[] } => !('failed' in exchange))
-      .map(({ question: q, answer }) => ({ question: q, answer }))
+    // 끝까지 답한 turn 만 이전 대화로 보낸다. 실패하거나 중단된 turn 은 답이 없다.
+    const history: AskTurn[] = exchanges.flatMap((e) =>
+      e.status === 'answered' ? [{ question: e.question, answer: e.answer }] : [],
+    )
 
-    const result = await askCourse(courseUuid, trimmed, history).catch(() => null)
+    // asking 이 동시 질문을 막으므로 이 자리는 끝날 때까지 이 질문의 것이다.
+    const index = exchanges.length
+    const put = (next: Exchange) => setExchanges((prev) => prev.map((e, i) => (i === index ? next : e)))
+    setExchanges((prev) => [...prev, { question: trimmed, status: 'streaming', citations: [], text: '' }])
 
-    setExchanges((prev) => [
-      ...prev,
-      result && result.kind === 'loaded'
-        ? { question: trimmed, answer: result.value.answer, citations: result.value.citations }
-        : { question: trimmed, failed: true },
-    ])
+    let citations: string[] = []
+    let body = ''
+    await askCourseStream(courseUuid, trimmed, history, (event) => {
+      switch (event.kind) {
+        case 'citations':
+          citations = event.citations
+          put({ question: trimmed, status: 'streaming', citations, text: body })
+          break
+        case 'delta':
+          body += event.text
+          put({ question: trimmed, status: 'streaming', citations, text: body })
+          break
+        case 'done':
+          // 본문을 확정하는 조건은 이것 하나뿐이다.
+          put({ question: trimmed, status: 'answered', answer: body, citations })
+          break
+        case 'unavailable':
+        case 'aborted':
+          // 받은 본문이 있어도 버린다 — 인용은 검증됐지만 문장이 미완이다.
+          put({ question: trimmed, status: 'failed' })
+          break
+      }
+    })
     setAsking(false)
   }
 
@@ -52,11 +75,13 @@ export function AskBox({ courseUuid }: { courseUuid: string }) {
       {exchanges.map((exchange, index) => (
         <div key={index} className="space-y-2 rounded-lg border border-black/10 p-4 dark:border-white/10">
           <p className="text-sm font-medium">{exchange.question}</p>
-          {'failed' in exchange ? (
+          {exchange.status === 'failed' ? (
             <p className="text-sm opacity-70">답을 만들지 못했어요. 잠시 후 다시 물어봐 주세요.</p>
           ) : (
             <>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed opacity-90">{exchange.answer}</p>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed opacity-90">
+                {exchange.status === 'answered' ? exchange.answer : exchange.text}
+              </p>
               <div className="flex flex-wrap gap-2">
                 {exchange.citations.map((path) => (
                   <button
