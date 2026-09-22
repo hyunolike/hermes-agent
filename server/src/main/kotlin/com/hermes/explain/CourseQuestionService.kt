@@ -5,9 +5,13 @@ import com.hermes.context.Invalid
 import com.hermes.context.PromptAssembler
 import com.hermes.context.Valid
 import com.hermes.llm.Answered
+import com.hermes.llm.AskStreamParser
 import com.hermes.llm.ExplanationProvider
 import com.hermes.llm.Failed
 import com.hermes.llm.Refused
+import com.hermes.llm.StreamCompleted
+import com.hermes.llm.StreamFailed
+import com.hermes.llm.StreamRefused
 
 /** 이미 오간 한 쌍. 서버는 이것을 저장하지 않는다 — 클라이언트가 매 요청 실어 보낸다. */
 data class QuestionTurn(val question: String, val answer: String)
@@ -42,6 +46,32 @@ class CourseQuestionService(
                 is Valid -> Explained(result.explanation)
                 is Invalid -> Unavailable(invalidCitationReason(citations))
             }
+        }
+    }
+
+    /**
+     * [ask] 의 스트리밍 변형. **같은 [buildUserText] 로 조립한다** — 두 경로의 프롬프트가
+     * 같아야 1시간 캐시가 유지되고, 하네스가 비스트리밍 경로로 잰 숫자가 여기도 유효하다.
+     *
+     * 안전 판단은 [AskStreamGate] 가 전부 한다. 여기는 배선뿐이다.
+     */
+    fun askStream(
+        facts: BackendFacts,
+        question: String,
+        history: List<QuestionTurn>,
+        emit: (AskStreamEvent) -> Unit,
+    ) {
+        val parser = AskStreamParser()
+        val gate = AskStreamGate(validator, emit)
+
+        val end = provider.stream(assembler.systemText, buildUserText(facts, question, history)) { chunk ->
+            parser.feed(chunk).forEach(gate::accept)
+        }
+
+        when (end) {
+            is StreamCompleted -> gate.finish(parser.complete)
+            is StreamRefused -> gate.fail("refusal (${end.category ?: "unknown"})")
+            is StreamFailed -> gate.fail(end.reason)
         }
     }
 
