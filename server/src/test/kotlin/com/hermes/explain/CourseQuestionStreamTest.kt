@@ -93,6 +93,21 @@ class CourseQuestionStreamTest {
     }
 
     @Test
+    fun `스트림이 정상 종료됐는데 JSON 이 안 닫히면 aborted 로 끝난다`() {
+        // StreamCompleted (정상 종료) 인데 본문 문자열이 닫히지 않은 채 끝난다 — 모델이
+        // max_tokens 로 잘렸을 때의 모양이다. finish 가 parser.complete 를 보지 않으면
+        // 미완성 문장을 DoneEvent 로 확정해 버린다.
+        val recorder = Recorder(listOf("""{"citations":["$known"],"explanation":"미"""))
+        val out = mutableListOf<AskStreamEvent>()
+
+        service(recorder).askStream(facts, "질문", emptyList()) { out += it }
+
+        assertThat(out.last()).isEqualTo(AbortedEvent("truncated response"))
+        assertThat(out).noneMatch { it == DoneEvent }
+        assertThat(out.filterIsInstance<DeltaEvent>()).isNotEmpty()
+    }
+
+    @Test
     fun `stream 을 재정의하지 않은 프로바이더도 기본 구현으로 돈다`() {
         val plain = object : ExplanationProvider {
             override val name = "plain"
