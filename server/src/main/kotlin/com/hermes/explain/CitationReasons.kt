@@ -19,9 +19,9 @@ internal fun invalidCitationReason(invalid: Invalid): String =
 /**
  * 모델의 거절을 사유 문자열로 만든다.
  *
- * `CourseQuestionService.ask()` 와 `askStream()` 이 모두 이것을 쓴다. 두 경로가 각자
- * `"refusal (...)"` 를 조립하면 한쪽만 문구를 바꿔도 컴파일도 테스트도 안 잡고,
- * 그 경로의 거절만 다른 모양으로 새어 나간다 — [invalidCitationReason] 이 막는 것과
- * 같은 종류의 드리프트다.
+ * `ExplanationService.explain()`, `CourseQuestionService.ask()`, `askStream()` 셋 다
+ * 이것을 쓴다. 세 경로가 각자 `"refusal (...)"` 를 조립하면 한 곳만 문구를 바꿔도
+ * 컴파일도 테스트도 안 잡고, 그 경로의 거절만 다른 모양으로 새어 나간다 —
+ * [invalidCitationReason] 이 막는 것과 같은 종류의 드리프트다.
  */
 internal fun refusalReason(category: String?): String = "refusal (${category ?: "unknown"})"
