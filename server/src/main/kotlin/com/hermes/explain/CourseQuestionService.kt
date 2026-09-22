@@ -40,7 +40,7 @@ class CourseQuestionService(
         val userText = buildUserText(facts, question, history)
 
         return when (val result = provider.explain(assembler.systemText, userText)) {
-            is Refused -> Unavailable("refusal (${result.category ?: "unknown"})")
+            is Refused -> Unavailable(refusalReason(result.category))
             is Failed -> Unavailable(result.reason)
             is Answered -> when (val citations = validator.validate(result.explanation.citations)) {
                 is Valid -> Explained(result.explanation)
@@ -70,7 +70,7 @@ class CourseQuestionService(
 
         when (end) {
             is StreamCompleted -> gate.finish(parser.complete)
-            is StreamRefused -> gate.fail("refusal (${end.category ?: "unknown"})")
+            is StreamRefused -> gate.fail(refusalReason(end.category))
             is StreamFailed -> gate.fail(end.reason)
         }
     }

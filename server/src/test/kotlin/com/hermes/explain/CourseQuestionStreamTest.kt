@@ -8,6 +8,7 @@ import com.hermes.llm.Explanation
 import com.hermes.llm.ExplanationProvider
 import com.hermes.llm.ProviderResult
 import com.hermes.llm.ProviderUsage
+import com.hermes.llm.Refused
 import com.hermes.llm.StreamCompleted
 import com.hermes.llm.StreamEnd
 import com.hermes.llm.StreamFailed
@@ -105,6 +106,25 @@ class CourseQuestionStreamTest {
         assertThat(out.last()).isEqualTo(AbortedEvent("truncated response"))
         assertThat(out).noneMatch { it == DoneEvent }
         assertThat(out.filterIsInstance<DeltaEvent>()).isNotEmpty()
+    }
+
+    @Test
+    fun `거절 사유 문구가 ask 와 askStream 에서 같다`() {
+        // CitationReasons.kt 의 refusalReason() 을 두 경로가 같이 쓰는지 고정한다.
+        // 한쪽만 문구를 바꾸면(예: "refusal (...)" -> "refused: ...") 여기서 잡힌다 —
+        // 그 전에는 컴파일도 나머지 스위트도 이 드리프트를 못 잡았다.
+        val refusing = object : ExplanationProvider {
+            override val name = "refusing"
+            override fun explain(systemText: String, userText: String): ProviderResult = Refused("cyber")
+        }
+
+        val askOutcome = service(refusing).ask(facts, "질문", emptyList())
+        val out = mutableListOf<AskStreamEvent>()
+        service(refusing).askStream(facts, "질문", emptyList()) { out += it }
+
+        val streamReason = (out.single() as UnavailableEvent).reason
+        assertThat((askOutcome as Unavailable).reason).isEqualTo(streamReason)
+        assertThat(streamReason).isEqualTo("refusal (cyber)")
     }
 
     @Test
