@@ -1,9 +1,7 @@
 import {
-  askResponseSchema,
   contextListSchema,
   explainResponseSchema,
   factsResponseSchema,
-  type AskResponse,
   type ContextEntry,
   type ExplainResponse,
   type Facts,
@@ -72,21 +70,6 @@ export function fetchExplanation(
 
 /** 서버는 대화를 저장하지 않는다 — 이전 turn 을 매 요청 함께 보낸다. */
 export type AskTurn = { question: string; answer: string }
-
-export function askCourse(
-  courseUuid: string,
-  question: string,
-  history: AskTurn[],
-  fetchImpl?: Fetch,
-): Promise<Result<AskResponse>> {
-  return get('/agent/ask', (raw) => askResponseSchema.parse(raw), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ courseUuid, question, history }),
-    cache: 'no-store',
-    fetchImpl,
-  })
-}
 
 export function fetchContextList(fetchImpl?: Fetch): Promise<Result<ContextEntry[]>> {
   return get('/agent/context', (raw) => contextListSchema.parse(raw), { fetchImpl })
