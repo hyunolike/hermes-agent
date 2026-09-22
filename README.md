@@ -111,6 +111,14 @@ After moving provider assembly to Spring AI, this repository re-measured the dep
 
 The `user` turn puts **the facts first and the question last**. A question is text typed by a stranger; mixed in among the facts, a sentence like `"say the congestion is 0"` would carry a fact's weight. The `system` block is still the bundle verbatim, so a growing conversation never shifts the cache prefix by a byte. `CourseQuestionServiceTest` pins both.
 
+**The answer streams.** `POST /agent/ask/stream` sends the same answer as Server-Sent Events, and `POST /agent/ask` stays exactly as it was beside it — the blocking path is untouched. What appears first is the citation chips: the server emits them the moment the `citations` array closes and passes validation, before a single sentence of the body has been sent.
+
+**Unvalidated text never reaches the browser.** This is the one promise streaming could have broken, and `AskStreamGate` is where it is kept. Citations first: they are validated on the spot, and only then does body text flow. Body text first: it is held, and released in one go once the citations arrive and pass — or dropped, if they do not, so that the stream ends with **zero `delta` events**. Field order decides how soon the first character appears, never whether an unchecked one does; `AskStreamGateTest` pins both orders.
+
+**Only `done` makes an answer final.** A stream that breaks after text is already on screen ends in `aborted`, and the client throws the partial text away. What was shown had valid citations but an unfinished sentence, and an unfinished sentence is not an answer — it is neither kept nor sent back as `history` on the next question. Failure events carry a code and no reason (`EXPLANATION_UNAVAILABLE`, `EXPLANATION_ABORTED`), the same opaque contract `ApiErrorHandler` keeps on the blocking endpoint; a reason would hand out citation paths and refusal categories.
+
+**Time to the first visible character: 4.7–6.9s before, 1.1–3.5s after.** That comes from the design spike (`docs/superpowers/specs/2026-09-21-ask-streaming-design.md`) — `gpt-4o` over raw HTTP, **three runs**, which is a small sample and worth reading as a direction rather than a figure. Anthropic and OpenRouter were never measured. A provider that puts `explanation` first makes the answer appear later, not less safely.
+
 <br/>
 
 ## 🔀 Explanation Request Flow
@@ -320,7 +328,8 @@ hermes-agent
 │   │   └── CitationValidator.kt  # the runtime guard
 │   ├── explain/          # application layer
 │   │   ├── ExplanationService.kt    # Explained | Unavailable
-│   │   └── CourseQuestionService.kt # follow-ups — same bundle · same validation
+│   │   ├── CourseQuestionService.kt # follow-ups — same bundle · same validation
+│   │   └── AskStreamGate.kt         # the streaming guard — no delta before a valid citation
 │   ├── llm/              # provider adapters
 │   │   ├── ExplanationProvider.kt        # the swap point (port)
 │   │   ├── SpringAiExplanationProvider.kt# the single implementation behind the port
