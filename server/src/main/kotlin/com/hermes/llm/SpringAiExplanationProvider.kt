@@ -169,6 +169,10 @@ class SpringAiExplanationProvider(
          */
         private fun isRefusal(generation: Generation): Boolean {
             if (generation.metadata?.finishReason.equals(REFUSAL, ignoreCase = true)) return true
+            // 타입이 있는 접근자가 없다 — AssistantMessage.getMetadata() 는 Map<String, Object>
+            // 라 이 캐스팅은 spring-ai-openai 가 "refusal" 이라는 문자열 키로 값을 넣는다는
+            // 관례에 기대고 있다. 다음 Spring AI 업그레이드가 그 키 이름을 바꾸면 여기가
+            // grep 할 자리다.
             val refusal = generation.output?.metadata?.get("refusal") as? String
             return !refusal.isNullOrBlank()
         }
