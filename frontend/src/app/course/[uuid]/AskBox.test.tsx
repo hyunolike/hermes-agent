@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as agent from '@/lib/agent'
@@ -226,5 +226,60 @@ describe('코스 후속 질문', () => {
     await screen.findByText('답')
 
     expect(ask.mock.calls[1][2]).toEqual([])
+  })
+
+  it('답이 흐르는 동안에는 둘째 질문이 나가지 않는다', async () => {
+    // 두 스트림이 겹치면 둘 다 같은 자리(index)를 잡아, 한 질문이 다른 질문의 답과
+    // 인용을 달고 있게 된다. 막는 자리는 세 군데 모두여야 한다 — 버튼의 disabled,
+    // 입력창의 Enter, 그리고 그 둘을 지나쳐 ask() 에 곧장 닿는 form 제출.
+    // 마지막 하나가 ask() 안의 잠금 자체를 건드린다(버튼이 안 막아 주는 경로).
+    let release!: () => void
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const asked: string[] = []
+    const ask = vi
+      .spyOn(agent, 'askCourseStream')
+      .mockImplementation(async (_courseUuid, question, _history, onEvent) => {
+        asked.push(question)
+        if (asked.length > 1) {
+          // 둘째 스트림이 열렸다면 첫 답 위에 덮어쓰려 들 것이다.
+          onEvent({ kind: 'citations', citations: ['b.md'] })
+          onEvent({ kind: 'delta', text: '둘째 답' })
+          onEvent(DONE)
+          return
+        }
+        onEvent({ kind: 'citations', citations: ['a.md'] })
+        await held
+        onEvent({ kind: 'delta', text: '첫 답' })
+        onEvent(DONE)
+      })
+
+    render(<AskBox courseUuid="abc" />)
+    const input = screen.getByLabelText('이 코스에 대해 더 묻기')
+    await userEvent.type(input, '첫 질문')
+    await userEvent.click(screen.getByRole('button', { name: '묻기' }))
+
+    // 첫 스트림은 아직 흐르는 중이다 — 인용은 왔고 done 은 오지 않았다.
+    await screen.findByRole('button', { name: 'a.md' })
+
+    await userEvent.type(input, '둘째 질문')
+    await userEvent.click(screen.getByRole('button', { name: '묻는 중…' }))
+    await userEvent.type(input, '{Enter}')
+    fireEvent.submit(input.closest('form') as HTMLFormElement)
+
+    expect(ask).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      release()
+    })
+
+    expect(ask).toHaveBeenCalledTimes(1)
+    expect(screen.getAllByText(/질문$/)).toHaveLength(1)
+    expect(screen.getByText('첫 질문')).toBeInTheDocument()
+    expect(screen.getByText('첫 답')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'a.md' })).toBeInTheDocument()
+    expect(screen.queryByText('둘째 답')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '묻기' })).toBeInTheDocument()
   })
 })
