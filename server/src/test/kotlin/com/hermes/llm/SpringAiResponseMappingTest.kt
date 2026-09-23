@@ -65,6 +65,33 @@ class SpringAiResponseMappingTest {
     }
 
     @Test
+    fun `OpenAI 거절 모양(finishReason=stop, metadata의 refusal 필드)도 Refused 로 갈린다`() {
+        // Fix round 1 조사 결과: 실제 OpenAI 거절은 finish_reason 이 "stop" 으로
+        // 남고(SDK 의 FinishReason enum 에 "refusal" 값 자체가 없다), 거절 텍스트는
+        // content 가 아니라 AssistantMessage.metadata["refusal"] 로 온다(Spring AI
+        // 의 OpenAiChatModel.buildGeneration 이 message.refusal() 을 그 키로 옮겨
+        // 놓는 것을 바이트코드로 확인 — SpringAiExplanationProvider.isRefusal 의
+        // 주석 참고). finishReason 만 보던 구코드였다면 이 케이스는 Refused 가
+        // 아니라 "response carried no structured content" 의 Failed 로 잘못
+        // 떨어졌다 — 위 `거절은 content 를 읽지 않고 Refused 로 갈린다` 테스트는
+        // Anthropic 모양(finishReason="refusal")만 고정하므로 이 OpenAI 모양은
+        // 따로 고정해야 한다.
+        val assistantMessage = AssistantMessage.builder()
+            .content("")
+            .properties(mapOf("refusal" to "I can't help with that."))
+            .build()
+        val generation = Generation(
+            assistantMessage,
+            ChatGenerationMetadata.builder().finishReason("stop").build(),
+        )
+        val response = ChatResponse(listOf(generation))
+
+        val result = SpringAiExplanationProvider.toProviderResult(response)
+
+        assertThat(result).isEqualTo(Refused(category = null))
+    }
+
+    @Test
     fun `모델 텍스트가 Explanation JSON 이 아니면 크래시 대신 Failed 로 끝나고 예외 정체가 남는다`() {
         val generation = Generation(
             AssistantMessage("this is not json at all"),

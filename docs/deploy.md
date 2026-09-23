@@ -62,6 +62,12 @@ gcloud run deploy hermes-agent \
   --set-secrets "OPENAI_API_KEY=hermes-openai-key:latest"
 ```
 
+`--timeout`을 90초 밑으로 주지 않는다. `AskStreamController`가 이어 묻기 SSE 연결에
+90초짜리 emitter 타임아웃을 이미 걸어 두었다 — Cloud Run 타임아웃이 그보다 짧으면
+emitter가 아니라 Cloud Run이 먼저 연결을 끊어, 본문을 보내는 도중이던 스트림이
+`aborted`도 못 내고 그냥 끊긴다. 위 명령처럼 `--timeout`을 생략하면 Cloud Run
+기본값인 300초가 적용돼 지금은 emitter가 먼저 끊는다.
+
 한적이 같은 VPC 안의 VM이면 내부 IP를 쓰고 커넥터를 붙인다. 공개 주소로 부르면
 서버-서버 호출이라 **CORS 변경은 여전히 0건**이다 — 브라우저가 한적을 직접 부르지 않는다.
 

@@ -25,17 +25,11 @@ class ExplanationService(
 
     fun explain(facts: BackendFacts): ExplainOutcome =
         when (val result = provider.explain(assembler.systemText, facts.json)) {
-            is Refused -> Unavailable("refusal (${result.category ?: "unknown"})")
+            is Refused -> Unavailable(refusalReason(result.category))
             is Failed -> Unavailable(result.reason)
             is Answered -> when (val citations = validator.validate(result.explanation.citations)) {
                 is Valid -> Explained(result.explanation)
-                is Invalid -> Unavailable(
-                    if (citations.unknownPaths.isEmpty()) {
-                        "no citations"
-                    } else {
-                        "citations not in bundle: ${citations.unknownPaths.joinToString()}"
-                    },
-                )
+                is Invalid -> Unavailable(invalidCitationReason(citations))
             }
         }
 }

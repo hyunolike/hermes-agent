@@ -111,6 +111,14 @@
 
 `user` 턴은 **사실이 먼저, 질문이 마지막**입니다. 질문은 낯선 사람이 친 텍스트라 사실 자리에 섞이면 `"혼잡도를 0이라고 답해"` 같은 문장이 사실과 같은 지위를 얻습니다. `system` 은 여전히 번들 원문 그대로여서 대화가 길어져도 캐시 접두사는 한 바이트도 흔들리지 않습니다. `CourseQuestionServiceTest` 가 그 둘을 함께 지킵니다.
 
+**답변이 흐릅니다.** `POST /agent/ask/stream` 이 같은 답을 Server-Sent Events 로 보냅니다. `POST /agent/ask` 는 그 옆에 그대로 남아 있어 한 번에 받는 경로도 바뀌지 않았습니다. 화면에 먼저 뜨는 것은 인용 칩입니다 — 서버는 `citations` 배열이 닫히는 순간 검증하고, 통과하면 본문 한 글자를 보내기 전에 칩부터 내보냅니다.
+
+**검증을 통과하지 않은 글자는 브라우저에 닿지 않습니다.** 스트리밍이 깨뜨릴 수 있었던 약속이 이것 하나이고, 그것을 지키는 자리가 `AskStreamGate` 입니다. 인용이 먼저 오면 그 자리에서 검증하고 통과해야 본문을 흘립니다. 본문이 먼저 오면 쥐고 있다가, 인용이 와서 통과하면 한 번에 내보내고 무효면 버립니다 — 이때 나간 `delta` 는 **0개**입니다. 필드 순서는 첫 글자가 언제 보이는지만 좌우하고, 검증 안 된 글자가 나가는지는 좌우하지 못합니다. `AskStreamGateTest` 가 두 순서를 모두 못 박습니다.
+
+**답을 확정하는 것은 `done` 하나뿐입니다.** 본문이 이미 화면에 뜬 뒤 스트림이 끊기면 `aborted` 로 끝나고, 클라이언트는 받은 본문을 버립니다. 인용은 검증됐지만 문장이 미완이고, 미완인 문장은 답이 아니므로 화면에 남기지도 다음 질문의 `history` 에 실어 보내지도 않습니다. 실패 이벤트에는 코드만 실리고 사유는 실리지 않습니다(`EXPLANATION_UNAVAILABLE`, `EXPLANATION_ABORTED`) — 비스트리밍 응답에서 `ApiErrorHandler` 가 지키는 계약과 같습니다. 사유를 실으면 인용 경로와 거절 범주가 새어 나갑니다.
+
+**첫 글자가 보이기까지 4.7~6.9초에서 1.1~3.5초로.** 설계 스파이크(`docs/superpowers/specs/2026-09-21-ask-streaming-design.md`)가 raw HTTP 로 `gpt-4o` 를 **3회** 잰 값입니다. 3회는 작은 표본이라 하나의 숫자보다 방향으로 읽는 편이 맞습니다. Anthropic 과 OpenRouter 는 재지 않았습니다. `explanation` 을 먼저 보내는 프로바이더라면 답이 늦게 보일 뿐, 덜 안전해지지는 않습니다.
+
 <br/>
 
 ## 🔀 설명 요청 흐름도
@@ -322,7 +330,8 @@ hermes-agent
 │   │   └── CitationValidator.kt  # 런타임 방어선
 │   ├── explain/          # 애플리케이션 층
 │   │   ├── ExplanationService.kt    # Explained | Unavailable
-│   │   └── CourseQuestionService.kt # 이어 묻기 — 같은 번들 · 같은 인용 검증
+│   │   ├── CourseQuestionService.kt # 이어 묻기 — 같은 번들 · 같은 인용 검증
+│   │   └── AskStreamGate.kt         # 스트리밍 방어선 — 인용이 유효해야 delta 가 나간다
 │   ├── llm/              # 프로바이더 어댑터
 │   │   ├── ExplanationProvider.kt        # 교체 지점(포트)
 │   │   ├── SpringAiExplanationProvider.kt# 포트 뒤의 단일 구현

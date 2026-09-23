@@ -6,6 +6,7 @@ import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.model.ChatResponse
+import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.prompt.Prompt
 
 /**
@@ -45,6 +46,48 @@ class SpringAiExplanationProvider(
         }
     }
 
+    /**
+     * 실제 스트리밍. Reactor 는 여기 가둔다 — 포트는 콜백과 블로킹 반환만 안다.
+     *
+     * 거절 판정은 `isRefusal` 을 쓴다(아래 설명 참고). **마지막 조각만 보면 안 된다** —
+     * 루프백으로 실측했다: Spring AI 의 `OpenAiChatModel.internalStream` 은 원본 SSE
+     * 청크를 누적 병합하지 않고 청크마다 독립적으로 `ChatResponse` 를 만들어 내보낸다
+     * (`OpenAiChatModel$ChunkMerger.mergeChoices` 가 새 델타의 content/refusal 을
+     * 이전 것 위에 이어붙이지 않는 것까지 바이트코드로 확인). 그래서 OpenAI 호환
+     * 거절은 `refusal` 필드를 실은 조각과 `finish_reason: "stop"` 을 실은 마지막(대개
+     * 빈) 조각이 서로 다를 수 있다 — 마지막 조각만 보면 그 사이 조각의 `refusal` 을
+     * 놓친다. 그래서 조각마다 `isRefusal` 을 확인해 하나라도 걸리면 거절로 닫는다.
+     * 거절이면 content 가 비어 있어(OpenAI 는 `refusal` 필드로, 본문 content 는
+     * 비운다) onChunk 가 불리지 않으므로, 게이트는 delta 없이 unavailable 로 닫는다.
+     */
+    override fun stream(systemText: String, userText: String, onChunk: (String) -> Unit): StreamEnd = try {
+        var last: ChatResponse? = null
+        var refused = false
+        chatClient
+            .prompt(Prompt(listOf(SystemMessage(systemText), UserMessage(userText))))
+            .stream()
+            .chatResponse()
+            .doOnNext { response ->
+                last = response
+                val generation = response.result
+                if (generation != null && isRefusal(generation)) refused = true
+                val text = generation?.output?.text
+                if (!text.isNullOrEmpty()) onChunk(text)
+            }
+            .blockLast()
+
+        if (refused) {
+            StreamRefused(category = null)
+        } else {
+            // 스트리밍에서는 프로바이더가 usage 를 안 줄 수 있다. 스트리밍 경로는 usage 를
+            // 집계에 쓰지 않으므로 0 으로 둔다 — 하네스는 비스트리밍 explain() 으로 잰다.
+            StreamCompleted(last?.let { usageOf(it) } ?: ProviderUsage(0, 0, 0, 0))
+        }
+    } catch (e: Exception) {
+        log.warn("$name stream failed", e)
+        StreamFailed("${e::class.simpleName}: ${e.message}")
+    }
+
     // public 이다(companion 자체를 private 로 두지 않는다) — Task 6 리뷰가 요구한
     // "매핑은 손으로 조립한 ChatResponse 로 직접 테스트할 수 있어야 한다" 를 만족하려면
     // SpringAiResponseMappingTest 가 SpringAiExplanationProvider.toProviderResult 를
@@ -67,14 +110,9 @@ class SpringAiExplanationProvider(
             val generation = response.result ?: return Failed("response carried no generation")
 
             // 거절을 content 읽기 전에 가른다. 거절은 HTTP 200 에 빈 content 로 오므로
-            // 본문을 무조건 읽는 코드는 여기서 깨진다.
-            //
-            // 구 코드가 싣던 stopDetails.category 는 여기까지 오지 않는다 — Spring AI 는
-            // StopReason.toString() 을 finishReason 문자열로만 노출한다(AnthropicChatModel
-            // 을 javap 로 확인함: lambda$buildGenerations$17 이 stopReason.toString() 을
-            // 그대로 finishReason 에 싣는다). 사유 해상도는 떨어지지만 Refused 와 Failed 를
-            // 가르는 판단에는 이것으로 충분하다.
-            if (generation.metadata?.finishReason.equals(REFUSAL, ignoreCase = true)) {
+            // 본문을 무조건 읽는 코드는 여기서 깨진다. 판정은 `isRefusal` 로 뺐다 —
+            // 그 함수의 설명 참고.
+            if (isRefusal(generation)) {
                 return Refused(category = null)
             }
 
@@ -96,27 +134,69 @@ class SpringAiExplanationProvider(
             val explanationText = parsed.at("/explanation").asText()
             if (explanationText.isNullOrBlank()) return Failed("structured content had no explanation field")
 
-            val usage = response.metadata.usage
             return Answered(
                 explanation = Explanation(
                     explanation = explanationText,
                     citations = parsed.at("/citations").map { it.asText() },
                 ),
-                usage = ProviderUsage(
-                    // usage.nativeUsage 는 프로바이더마다 콘크리트 타입이 다르다
-                    // (Anthropic 은 com.anthropic.models.messages.Usage — javap 로 확인).
-                    // 그걸 직접 캐스팅하는 대신, spring-ai-model 의 최상위 Usage 인터페이스가
-                    // 이미 노출하는 getCacheReadInputTokens()/getCacheWriteInputTokens() 를
-                    // 쓴다 — AnthropicChatModel.getDefaultUsage(...) 가 nativeUsage 에서
-                    // 캐시 토큰을 뽑아 DefaultUsage 의 이 필드에 채워 넣는 것까지 바이트코드로
-                    // 확인했다. OpenAI 계열은 캐시 생성 토큰 개념이 없어 이 필드가 null 로
-                    // 남고(OpenAiChatModel.getDefaultUsage 확인), 여기서 0L 로 떨어진다 —
-                    // 캐스팅이 없으니 ClassCastException 도 날 수 없다.
-                    cacheReadTokens = usage.cacheReadInputTokens ?: 0L,
-                    cacheCreationTokens = usage.cacheWriteInputTokens ?: 0L,
-                    inputTokens = (usage.promptTokens ?: 0).toLong(),
-                    outputTokens = (usage.completionTokens ?: 0).toLong(),
-                ),
+                usage = usageOf(response),
+            )
+        }
+
+        /**
+         * 거절 판정. `explain()`(`toProviderResult`) 과 `stream()` 이 같은 로직을 쓴다.
+         *
+         * finishReason 만으로는 부족하다 — 두 프로바이더가 거절을 싣는 자리가 다르다.
+         * javap 로 직접 확인했다(Fix round 1, Important 리뷰 대응):
+         *
+         * - Anthropic: `com.anthropic.models.messages.StopReason` 에 `REFUSAL` 상수가
+         *   실존한다. `AnthropicChatModel` 이 `StopReason.toString()` 을 finishReason
+         *   문자열로 그대로 싣는 것은 이미 확인돼 있었다(위 커밋 로그 참고) — 그래서
+         *   finishReason == "refusal" 비교는 Anthropic 에서는 원래도 맞았다.
+         * - OpenAI 호환: `com.openai.models.chat.completions.ChatCompletionChunk.Choice.
+         *   FinishReason` 에는 STOP/LENGTH/TOOL_CALLS/CONTENT_FILTER/FUNCTION_CALL 뿐이고
+         *   "refusal" 값 자체가 없다 — 실제 거절은 finish_reason="stop" 에 message 의
+         *   별도 `refusal` 필드로 온다(스트리밍은 `delta.refusal`). `OpenAiChatModel.
+         *   buildGeneration` 이 이 필드를 `AssistantMessage.metadata["refusal"]` 로
+         *   옮겨 놓는 것을, 스트리밍 쪽은 `ChunkMerger.chunkToChatCompletion` 이
+         *   `delta.refusal()` 을 병합해 같은 `buildGeneration` 을 타는 것까지 바이트코드로
+         *   확인했다 — call() 과 stream() 이 같은 변환 경로를 공유한다.
+         *
+         * 그래서 finishReason == "refusal" 이 원래 맞았던 것은 Anthropic 뿐이고,
+         * OpenAI 호환 경로에서는 이 검사가 한 번도 발동한 적이 없었다(REFUSAL 이 이
+         * enum 에 없으므로) — 빈 content 가 그대로 "response carried no structured
+         * content" 의 Failed 로 떨어졌다. 두 신호를 모두 보게 고쳤다.
+         */
+        private fun isRefusal(generation: Generation): Boolean {
+            if (generation.metadata?.finishReason.equals(REFUSAL, ignoreCase = true)) return true
+            // 타입이 있는 접근자가 없다 — AssistantMessage.getMetadata() 는 Map<String, Object>
+            // 라 이 캐스팅은 spring-ai-openai 가 "refusal" 이라는 문자열 키로 값을 넣는다는
+            // 관례에 기대고 있다. 다음 Spring AI 업그레이드가 그 키 이름을 바꾸면 여기가
+            // grep 할 자리다.
+            val refusal = generation.output?.metadata?.get("refusal") as? String
+            return !refusal.isNullOrBlank()
+        }
+
+        /**
+         * `ChatResponse` 에서 usage 를 뽑는다. `explain()`(`toProviderResult`) 과
+         * `stream()` 이 같은 로직을 쓴다 — 두 벌 두지 않는다.
+         */
+        private fun usageOf(response: ChatResponse): ProviderUsage {
+            val usage = response.metadata.usage
+            return ProviderUsage(
+                // usage.nativeUsage 는 프로바이더마다 콘크리트 타입이 다르다
+                // (Anthropic 은 com.anthropic.models.messages.Usage — javap 로 확인).
+                // 그걸 직접 캐스팅하는 대신, spring-ai-model 의 최상위 Usage 인터페이스가
+                // 이미 노출하는 getCacheReadInputTokens()/getCacheWriteInputTokens() 를
+                // 쓴다 — AnthropicChatModel.getDefaultUsage(...) 가 nativeUsage 에서
+                // 캐시 토큰을 뽑아 DefaultUsage 의 이 필드에 채워 넣는 것까지 바이트코드로
+                // 확인했다. OpenAI 계열은 캐시 생성 토큰 개념이 없어 이 필드가 null 로
+                // 남고(OpenAiChatModel.getDefaultUsage 확인), 여기서 0L 로 떨어진다 —
+                // 캐스팅이 없으니 ClassCastException 도 날 수 없다.
+                cacheReadTokens = usage.cacheReadInputTokens ?: 0L,
+                cacheCreationTokens = usage.cacheWriteInputTokens ?: 0L,
+                inputTokens = (usage.promptTokens ?: 0).toLong(),
+                outputTokens = (usage.completionTokens ?: 0).toLong(),
             )
         }
     }
